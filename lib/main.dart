@@ -1,11 +1,14 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'screens/reader_screen.dart';
 import 'screens/settings_screen.dart';
+import 'providers/reader_settings.dart';
+import 'services/tts_service.dart';
 
 enum BookmarkType {
   all,
@@ -73,22 +76,28 @@ class DaPubReaderApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'DaPub Reader',
-      debugShowCheckedModeBanner: false,
-      themeMode: initialDarkMode ? ThemeMode.dark : ThemeMode.light,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
-      ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.deepPurple,
-          brightness: Brightness.dark,
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => ReaderSettings()),
+        ChangeNotifierProvider(create: (_) => TtsService()),
+      ],
+      child: MaterialApp(
+        title: 'DaPub Reader',
+        debugShowCheckedModeBanner: false,
+        themeMode: initialDarkMode ? ThemeMode.dark : ThemeMode.light,
+        theme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+          useMaterial3: true,
         ),
-        useMaterial3: true,
+        darkTheme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: Colors.deepPurple,
+            brightness: Brightness.dark,
+          ),
+          useMaterial3: true,
+        ),
+        home: const HomeScreen(),
       ),
-      home: const HomeScreen(),
     );
   }
 }
@@ -407,7 +416,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.library_books_outlined, size: 64, color: Colors.grey),
+                  const Icon(Icons.library_books_outlined, size: 64, color: Colors.grey),
                   const SizedBox(height: 16),
                   const Text('No books in library'),
                   const SizedBox(height: 8),
@@ -459,8 +468,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         backgroundColor: _getBookmarkColor(b).withOpacity(0.1),
                         padding: EdgeInsets.zero,
-                        materialTapTargetSize:
-                            MaterialTapTargetSize.shrinkWrap,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         visualDensity: VisualDensity.compact,
                       );
                     }).toList(),
