@@ -10,8 +10,13 @@ import '../services/tts_service.dart';
 
 class ReaderScreen extends StatefulWidget {
   final String filePath;
+  final int startChapter;
 
-  const ReaderScreen({super.key, required this.filePath});
+  const ReaderScreen({
+    super.key,
+    required this.filePath,
+    this.startChapter = 0,
+  });
 
   @override
   State<ReaderScreen> createState() => _ReaderScreenState();
@@ -31,14 +36,25 @@ class _ReaderScreenState extends State<ReaderScreen> {
     super.initState();
     _ttsService = TtsService();
     _ttsService!.initialize();
+    _currentChapterIndex = widget.startChapter;
     _loadBook();
   }
 
   @override
   void dispose() {
+    _saveLastRead();
     _ttsService?.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _saveLastRead() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('lastOpenedPath', widget.filePath);
+      await prefs.setInt('lastChapterIndex', _currentChapterIndex);
+      await prefs.setInt('chapter_${widget.filePath}', _currentChapterIndex);
+    } catch (_) {}
   }
 
   Future<void> _loadBook() async {

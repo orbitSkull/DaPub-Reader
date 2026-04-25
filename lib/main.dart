@@ -148,6 +148,35 @@ class _HomeScreenState extends State<HomeScreen> {
     await prefs.setString('library', data);
   }
 
+  Future<void> _continueReading() async {
+    final prefs = await SharedPreferences.getInstance();
+    final lastPath = prefs.getString('lastOpenedPath');
+    if (lastPath != null && File(lastPath).existsSync()) {
+      final chapterIndex = prefs.getInt('chapter_$lastPath') ?? 0;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ReaderScreen(
+            filePath: lastPath,
+            startChapter: chapterIndex,
+          ),
+        ),
+      ).then((_) => _loadBooks());
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No book to continue')),
+        );
+      }
+    }
+  }
+
+  void _showWriterToast() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Coming Soon')),
+    );
+  }
+
   Future<void> _openFile() async {
     setState(() => _isLoading = true);
 
@@ -176,12 +205,23 @@ class _HomeScreenState extends State<HomeScreen> {
         }
 
         if (mounted) {
+          final isNew = !_books.any((b) => b.filePath == filePath);
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => ReaderScreen(filePath: filePath),
+              builder: (context) => ReaderScreen(
+                filePath: filePath,
+                startChapter: 0,
+              ),
             ),
-          ).then((_) => _loadBooks());
+          ).then((_) {
+            _loadBooks();
+            if (isNew) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Added to the library')),
+              );
+            }
+          });
         }
       }
     } catch (e) {
@@ -195,15 +235,6 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() => _isLoading = false);
       }
     }
-  }
-
-  void _showWriterToast() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Coming Soon ...'),
-        duration: Duration(seconds: 2),
-      ),
-    );
   }
 
   List<BookEntry> get _filteredBooks {
@@ -274,12 +305,17 @@ class _HomeScreenState extends State<HomeScreen> {
     Navigator.pop(context);
   }
 
-  void _openBook(BookEntry book) {
+  void _openBook(BookEntry book) async {
+    final prefs = await SharedPreferences.getInstance();
+    final chapterIndex = prefs.getInt('chapter_${book.filePath}') ?? 0;
     Navigator.pop(context);
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => ReaderScreen(filePath: book.filePath),
+        builder: (context) => ReaderScreen(
+          filePath: book.filePath,
+          startChapter: chapterIndex,
+        ),
       ),
     ).then((_) => _loadBooks());
   }
@@ -495,20 +531,10 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: [
-        _buildLibrary(),
-        const StatsScreen(),
-        const SettingsScreen(),
-      ][_currentIndex],
+      body: _buildBody(),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
-        onTap: (index) {
-          if (index == 1) {
-            _showWriterToast();
-            return;
-          }
-          setState(() => _currentIndex = index == 0 ? 0 : 2);
-        },
+        onTap: (index) => _onNavTap(index),
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.library_books_outlined),
@@ -516,14 +542,19 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'Library',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.edit_outlined),
-            activeIcon: Icon(Icons.edit),
-            label: 'Writer',
+            icon: Icon(Icons.play_circle_outline),
+            activeIcon: Icon(Icons.play_circle),
+            label: 'Continue',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.bar_chart_outlined),
             activeIcon: Icon(Icons.bar_chart),
             label: 'Stats',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.edit_outlined),
+            activeIcon: Icon(Icons.edit),
+            label: 'Writer',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.settings_outlined),
@@ -543,6 +574,33 @@ class _HomeScreenState extends State<HomeScreen> {
             : const Icon(Icons.add),
       ),
     );
+  }
+
+  Widget _buildBody() {
+    switch (_currentIndex) {
+      case 0:
+        return _buildLibrary();
+      case 2:
+        return const StatsScreen();
+      case 3:
+        return const SizedBox.shrink();
+      case 4:
+        return const SettingsScreen();
+      default:
+        return _buildLibrary();
+    }
+  }
+
+  void _onNavTap(int index) {
+    if (index == 1) {
+      _continueReading();
+      return;
+    }
+    if (index == 3) {
+      _showWriterToast();
+      return;
+    }
+    setState(() => _currentIndex = index);
   }
 }
 
