@@ -1,11 +1,11 @@
 # DaPub-Reader Task List
 
 ## Phase 1: Project Setup
-- [ ] Initialize Flutter project (already done)
-- [ ] Set up git repository
-- [ ] Add required dependencies to pubspec.yaml
-- [ ] Configure Android permissions for file access
-- [ ] Create basic folder structure (lib/features, lib/widgets, lib/utils, etc.)
+- [x] Initialize Flutter project (already done)
+- [x] Set up git repository
+- [x] Add required dependencies to pubspec.yaml
+- [x] Configure Android permissions for file access
+- [x] Create basic folder structure (lib/features, lib/widgets, lib/utils, etc.)
 
 ## Phase 2: Basic UI Implementation
 - [ ] Create home screen with file picker/button
