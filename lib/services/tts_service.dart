@@ -16,12 +16,14 @@ class TtsService extends ChangeNotifier {
   String? _currentText;
   double _speechRate = 1.0;
   double _pitch = 1.0;
+  PiperVoicePack _selectedVoice = PiperVoicePack.norman;
   String? _errorMessage;
   String? _audioPath;
 
   TtsState get state => _state;
   double get speechRate => _speechRate;
   double get pitch => _pitch;
+  PiperVoicePack get selectedVoice => _selectedVoice;
   bool get isPlaying => _state == TtsState.playing;
   bool get isPaused => _state == TtsState.paused;
   String? get errorMessage => _errorMessage;
@@ -45,6 +47,8 @@ class TtsService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     _speechRate = prefs.getDouble('defaultSpeechRate') ?? 1.0;
     _pitch = prefs.getDouble('defaultPitch') ?? 1.0;
+    final voiceIndex = prefs.getInt('selectedVoice') ?? PiperVoicePack.norman.index;
+    _selectedVoice = PiperVoicePack.values[voiceIndex];
   }
 
   void setSpeechRate(double rate) {
@@ -57,6 +61,13 @@ class TtsService extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setVoice(PiperVoicePack voice) async {
+    _selectedVoice = voice;
+    _state = TtsState.idle;
+    notifyListeners();
+    await initialize();
+  }
+
   Future<void> initialize() async {
     if (_state == TtsState.loading || _state == TtsState.ready) return;
     
@@ -65,10 +76,10 @@ class TtsService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await _tts.loadViaVoicePack(PiperVoicePack.norman);
+      await _tts.loadViaVoicePack(_selectedVoice);
       _state = TtsState.ready;
     } catch (e) {
-      _errorMessage = e.toString();
+      _errorMessage = 'Voice model not loaded. Go to Settings > TTS to download a voice model first.';
       _state = TtsState.error;
     }
     notifyListeners();

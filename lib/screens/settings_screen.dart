@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:piper_tts_plugin/enums/piper_voice_pack.dart';
+import 'package:piper_tts_plugin/piper_tts_plugin.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -14,6 +16,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   double _defaultLineHeight = 1.6;
   double _defaultSpeechRate = 1.0;
   double _defaultPitch = 1.0;
+  PiperVoicePack _selectedVoice = PiperVoicePack.norman;
+  bool _isLoadingVoice = false;
 
   @override
   void initState() {
@@ -23,12 +27,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
+    final voiceIndex = prefs.getInt('selectedVoice') ?? PiperVoicePack.norman.index;
     setState(() {
       _darkMode = prefs.getBool('darkMode') ?? false;
       _defaultFontSize = prefs.getDouble('defaultFontSize') ?? 16.0;
       _defaultLineHeight = prefs.getDouble('defaultLineHeight') ?? 1.6;
       _defaultSpeechRate = prefs.getDouble('defaultSpeechRate') ?? 1.0;
       _defaultPitch = prefs.getDouble('defaultPitch') ?? 1.0;
+      _selectedVoice = PiperVoicePack.values[voiceIndex];
     });
   }
 
@@ -39,6 +45,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await prefs.setDouble('defaultLineHeight', _defaultLineHeight);
     await prefs.setDouble('defaultSpeechRate', _defaultSpeechRate);
     await prefs.setDouble('defaultPitch', _defaultPitch);
+    await prefs.setInt('selectedVoice', _selectedVoice.index);
+  }
+
+  Future<void> _downloadVoiceModel() async {
+    setState(() => _isLoadingVoice = true);
+    try {
+      final tts = PiperTtsPlugin();
+      await tts.loadViaVoicePack(_selectedVoice);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${_selectedVoice.name} voice model loaded!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading voice: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoadingVoice = false);
+    }
   }
 
   @override
@@ -93,6 +121,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ]),
         _buildSection('Text-to-Speech', [
+          ListTile(
+            title: const Text('Voice Model'),
+            subtitle: Text(_selectedVoice.name),
+            trailing: const Icon(Icons.arrow_drop_down),
+            onTap: () => _showVoiceSelector(),
+          ),
+          ListTile(
+            title: const Text('Download/Load Voice'),
+            subtitle: _isLoadingVoice
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Tap to download voice model'),
+            trailing: _isLoadingVoice
+                ? null
+                : ElevatedButton(
+                    onPressed: _downloadVoiceModel,
+                    child: const Text('Download'),
+                  ),
+          ),
+          const Divider(),
           ListTile(
             title: const Text('Default Speech Rate'),
             subtitle: Text('${_defaultSpeechRate.toStringAsFixed(1)}x'),
@@ -198,6 +249,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: const Text('Clear', style: TextStyle(color: Colors.red)),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showVoiceSelector() {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => ListView(
+        shrinkWrap: true,
+        children: PiperVoicePack.values.map((voice) {
+          return ListTile(
+            title: Text(voice.name),
+            trailing: _selectedVoice == voice
+                ? const Icon(Icons.check, color: Colors.green)
+                : null,
+            onTap: () {
+              setState(() => _selectedVoice = voice);
+              _saveSettings();
+              Navigator.pop(context);
+            },
+          );
+        }).toList(),
       ),
     );
   }

@@ -7,6 +7,7 @@ import '../providers/reader_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../services/tts_service.dart';
+import 'package:just_audio/just_audio.dart' show ProcessingState;
 
 class ReaderScreen extends StatefulWidget {
   final String filePath;
@@ -27,6 +28,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   List<EpubChapter> _chapters = [];
   int _currentChapterIndex = 0;
   bool _isLoading = true;
+  bool _isSpeaking = false;
   String? _error;
   final ScrollController _scrollController = ScrollController();
   TtsService? _ttsService;
@@ -252,53 +254,82 @@ class _ReaderScreenState extends State<ReaderScreen> {
     final backgroundColor = isDark ? Colors.grey[900] : Colors.white;
     final textColor = isDark ? Colors.white : Colors.black87;
 
-    return Container(
-      color: backgroundColor,
-      child: SingleChildScrollView(
-        controller: _scrollController,
-        padding: const EdgeInsets.all(16),
-        child: Html(
-          data: content,
-          style: {
-            'body': Style(
-              fontSize: FontSize(settings.fontSize),
-              lineHeight: LineHeight(settings.lineHeight),
-              color: textColor,
-              backgroundColor: backgroundColor,
-              fontFamily: settings.fontFamily,
-              margin: Margins.zero,
-              padding: HtmlPaddings.zero,
+    return Stack(
+      children: [
+        Container(
+          color: backgroundColor,
+          child: SingleChildScrollView(
+            controller: _scrollController,
+            padding: const EdgeInsets.all(16),
+            child: Html(
+              data: content,
+              style: {
+                'body': Style(
+                  fontSize: FontSize(settings.fontSize),
+                  lineHeight: LineHeight(settings.lineHeight),
+                  color: textColor,
+                  backgroundColor: backgroundColor,
+                  fontFamily: settings.fontFamily,
+                  margin: Margins.zero,
+                  padding: HtmlPaddings.zero,
+                ),
+                'p': Style(
+                  margin: Margins.only(bottom: 16),
+                  fontSize: FontSize(settings.fontSize),
+                  lineHeight: LineHeight(settings.lineHeight),
+                ),
+                'h1': Style(
+                  fontSize: FontSize(settings.fontSize * 1.8),
+                  fontWeight: FontWeight.bold,
+                  margin: Margins.only(top: 24, bottom: 16),
+                ),
+                'h2': Style(
+                  fontSize: FontSize(settings.fontSize * 1.5),
+                  fontWeight: FontWeight.bold,
+                  margin: Margins.only(top: 20, bottom: 12),
+                ),
+                'h3': Style(
+                  fontSize: FontSize(settings.fontSize * 1.3),
+                  fontWeight: FontWeight.bold,
+                  margin: Margins.only(top: 16, bottom: 10),
+                ),
+                'div': Style(
+                  fontSize: FontSize(settings.fontSize),
+                  lineHeight: LineHeight(settings.lineHeight),
+                ),
+                'span': Style(
+                  fontSize: FontSize(settings.fontSize),
+                ),
+              },
             ),
-            'p': Style(
-              margin: Margins.only(bottom: 16),
-              fontSize: FontSize(settings.fontSize),
-              lineHeight: LineHeight(settings.lineHeight),
-            ),
-            'h1': Style(
-              fontSize: FontSize(settings.fontSize * 1.8),
-              fontWeight: FontWeight.bold,
-              margin: Margins.only(top: 24, bottom: 16),
-            ),
-            'h2': Style(
-              fontSize: FontSize(settings.fontSize * 1.5),
-              fontWeight: FontWeight.bold,
-              margin: Margins.only(top: 20, bottom: 12),
-            ),
-            'h3': Style(
-              fontSize: FontSize(settings.fontSize * 1.3),
-              fontWeight: FontWeight.bold,
-              margin: Margins.only(top: 16, bottom: 10),
-            ),
-            'div': Style(
-              fontSize: FontSize(settings.fontSize),
-              lineHeight: LineHeight(settings.lineHeight),
-            ),
-            'span': Style(
-              fontSize: FontSize(settings.fontSize),
-            ),
-          },
+          ),
         ),
-      ),
+        if (_isSpeaking)
+          Positioned(
+            top: 8,
+            left: 8,
+            right: 8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.9),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.volume_up, color: Colors.white, size: 16),
+                  SizedBox(width: 8),
+                  Text(
+                    'Playing audio...',
+                    style: TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -399,6 +430,12 @@ class _ReaderScreenState extends State<ReaderScreen> {
       final content = chapter.htmlContent ?? '';
       final plainText = _stripHtml(content);
       if (plainText.isNotEmpty) {
+        setState(() => _isSpeaking = true);
+        tts.player.playerStateStream.listen((state) {
+          if (state.processingState == ProcessingState.completed) {
+            if (mounted) setState(() => _isSpeaking = false);
+          }
+        });
         tts.speak(plainText);
       }
     }
