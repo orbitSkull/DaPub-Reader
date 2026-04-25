@@ -83,22 +83,26 @@ class DaPubReaderApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ReaderSettings()),
         ChangeNotifierProvider(create: (_) => TtsService()),
       ],
-      child: MaterialApp(
-        title: 'DaPub Reader',
-        debugShowCheckedModeBanner: false,
-        themeMode: initialDarkMode ? ThemeMode.dark : ThemeMode.light,
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-          useMaterial3: true,
-        ),
-        darkTheme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: Colors.deepPurple,
-            brightness: Brightness.dark,
-          ),
-          useMaterial3: true,
-        ),
-        home: const HomeScreen(),
+      child: Consumer<ReaderSettings>(
+        builder: (context, settings, _) {
+          return MaterialApp(
+            title: 'DaPub Reader',
+            debugShowCheckedModeBanner: false,
+            themeMode: settings.darkMode ? ThemeMode.dark : ThemeMode.light,
+            theme: ThemeData(
+              colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+              useMaterial3: true,
+            ),
+            darkTheme: ThemeData(
+              colorScheme: ColorScheme.fromSeed(
+                seedColor: Colors.deepPurple,
+                brightness: Brightness.dark,
+              ),
+              useMaterial3: true,
+            ),
+            home: const HomeScreen(),
+          );
+        },
       ),
     );
   }

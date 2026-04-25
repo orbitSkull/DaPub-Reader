@@ -31,21 +31,47 @@ class _ReaderScreenState extends State<ReaderScreen> {
   bool _isSpeaking = false;
   String? _error;
   final ScrollController _scrollController = ScrollController();
-  TtsService? _ttsService;
+  
+  // Use GlobalKey for the Html widget to find children if needed
+  final GlobalKey _htmlKey = GlobalKey();
+  final GlobalKey _highlightKey = GlobalKey();
+  
+  int _lastChunkIndex = -1;
 
   @override
   void initState() {
     super.initState();
-    _ttsService = TtsService();
-    _ttsService!.initialize();
     _currentChapterIndex = widget.startChapter;
     _loadBook();
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Add listener to TtsService for auto-scrolling
+    final tts = Provider.of<TtsService>(context);
+    if (tts.isPlaying && tts.currentChunkIndex != _lastChunkIndex) {
+      _lastChunkIndex = tts.currentChunkIndex;
+      _scrollToHighlight();
+    }
+  }
+
+  void _scrollToHighlight() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_highlightKey.currentContext != null) {
+        Scrollable.ensureVisible(
+          _highlightKey.currentContext!,
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeInOut,
+          alignment: 0.3, // Scroll so it's in the top 30% of the screen
+        );
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _saveLastRead();
-    _ttsService?.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -254,82 +280,131 @@ class _ReaderScreenState extends State<ReaderScreen> {
     final backgroundColor = isDark ? Colors.grey[900] : Colors.white;
     final textColor = isDark ? Colors.white : Colors.black87;
 
-    return Stack(
-      children: [
-        Container(
-          color: backgroundColor,
-          child: SingleChildScrollView(
-            controller: _scrollController,
-            padding: const EdgeInsets.all(16),
-            child: Html(
-              data: content,
-              style: {
-                'body': Style(
-                  fontSize: FontSize(settings.fontSize),
-                  lineHeight: LineHeight(settings.lineHeight),
-                  color: textColor,
-                  backgroundColor: backgroundColor,
-                  fontFamily: settings.fontFamily,
-                  margin: Margins.zero,
-                  padding: HtmlPaddings.zero,
+    return Consumer<TtsService>(
+      builder: (context, tts, _) {
+        final currentText = tts.currentChunkText;
+        
+        String displayContent = content;
+        if (tts.isPlaying && currentText != null) {
+          try {
+            final highlightColor = isDark ? 'rgba(255, 255, 0, 0.3)' : 'rgba(255, 255, 0, 0.5)';
+            // We use a specific ID to find it for scrolling and styling
+            if (displayContent.contains(currentText)) {
+               displayContent = displayContent.replaceFirst(
+                currentText, 
+                '<span id="current-reading-chunk" style="background-color: $highlightColor; border-radius: 4px; padding: 2px 0;">$currentText</span>'
+              );
+            }
+          } catch (_) {}
+        }
+
+        return Stack(
+          children: [
+            Container(
+              color: backgroundColor,
+              child: SingleChildScrollView(
+                controller: _scrollController,
+                padding: const EdgeInsets.all(16),
+                child: Html(
+                  key: _htmlKey,
+                  data: displayContent,
+                  // Use extensions to catch our highlighted span and attach the key
+                  extensions: [
+                    TagExtension(
+                      tagsToExtend: {"span"},
+                      builder: (extensionContext) {
+                        if (extensionContext.attributes['id'] == 'current-reading-chunk') {
+                          return Text.rich(
+                            TextSpan(
+                              text: extensionContext.element?.text ?? "",
+                              style: extensionContext.styledElement?.style.generateTextStyle(),
+                            ),
+                            key: _highlightKey,
+                          );
+                        }
+                        return const SizedBox.shrink();
+                      },
+                    ),
+                  ],
+                  style: {
+                    'body': Style(
+                      fontSize: FontSize(settings.fontSize),
+                      lineHeight: LineHeight(settings.lineHeight),
+                      color: textColor,
+                      backgroundColor: backgroundColor,
+                      fontFamily: settings.fontFamily,
+                      margin: Margins.zero,
+                      padding: HtmlPaddings.zero,
+                    ),
+                    'p': Style(
+                      margin: Margins.only(bottom: 16),
+                      fontSize: FontSize(settings.fontSize),
+                      lineHeight: LineHeight(settings.lineHeight),
+                      color: textColor,
+                    ),
+                    'h1': Style(
+                      fontSize: FontSize(settings.fontSize * 1.8),
+                      fontWeight: FontWeight.bold,
+                      margin: Margins.only(top: 24, bottom: 16),
+                      color: textColor,
+                    ),
+                    'h2': Style(
+                      fontSize: FontSize(settings.fontSize * 1.5),
+                      fontWeight: FontWeight.bold,
+                      margin: Margins.only(top: 20, bottom: 12),
+                      color: textColor,
+                    ),
+                    'h3': Style(
+                      fontSize: FontSize(settings.fontSize * 1.3),
+                      fontWeight: FontWeight.bold,
+                      margin: Margins.only(top: 16, bottom: 10),
+                      color: textColor,
+                    ),
+                    'div': Style(
+                      fontSize: FontSize(settings.fontSize),
+                      lineHeight: LineHeight(settings.lineHeight),
+                      color: textColor,
+                    ),
+                    'span': Style(
+                      fontSize: FontSize(settings.fontSize),
+                      color: textColor,
+                    ),
+                    'li': Style(
+                      fontSize: FontSize(settings.fontSize),
+                      color: textColor,
+                    ),
+                  },
                 ),
-                'p': Style(
-                  margin: Margins.only(bottom: 16),
-                  fontSize: FontSize(settings.fontSize),
-                  lineHeight: LineHeight(settings.lineHeight),
-                ),
-                'h1': Style(
-                  fontSize: FontSize(settings.fontSize * 1.8),
-                  fontWeight: FontWeight.bold,
-                  margin: Margins.only(top: 24, bottom: 16),
-                ),
-                'h2': Style(
-                  fontSize: FontSize(settings.fontSize * 1.5),
-                  fontWeight: FontWeight.bold,
-                  margin: Margins.only(top: 20, bottom: 12),
-                ),
-                'h3': Style(
-                  fontSize: FontSize(settings.fontSize * 1.3),
-                  fontWeight: FontWeight.bold,
-                  margin: Margins.only(top: 16, bottom: 10),
-                ),
-                'div': Style(
-                  fontSize: FontSize(settings.fontSize),
-                  lineHeight: LineHeight(settings.lineHeight),
-                ),
-                'span': Style(
-                  fontSize: FontSize(settings.fontSize),
-                ),
-              },
-            ),
-          ),
-        ),
-        if (_isSpeaking)
-          Positioned(
-            top: 8,
-            left: 8,
-            right: 8,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.9),
-                borderRadius: BorderRadius.circular(20),
               ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.volume_up, color: Colors.white, size: 16),
-                  SizedBox(width: 8),
-                  Text(
-                    'Playing audio...',
-                    style: TextStyle(color: Colors.white, fontSize: 12),
+            ),
+            if (tts.isPlaying)
+              Positioned(
+                top: 8,
+                left: 8,
+                right: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.9),
+                    borderRadius: BorderRadius.circular(20),
                   ),
-                ],
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.volume_up, color: Colors.white, size: 16),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Playing: Chunk ${tts.currentChunkIndex + 1}/${tts.totalChunks}',
+                        style: const TextStyle(color: Colors.white, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ),
-      ],
+          ],
+        );
+      },
     );
   }
 
@@ -338,9 +413,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
     final canGoBack = _currentChapterIndex > 0;
     final canGoForward = _currentChapterIndex < _chapters.length - 1;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
-      color: Colors.grey[100],
+      color: isDark ? Colors.grey[900] : Colors.grey[100],
       child: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -353,7 +429,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                 label: const Text('Previous'),
               ),
               StreamBuilder(
-                stream: _ttsService?.positionStream ?? const Stream.empty(),
+                stream: Provider.of<TtsService>(context, listen: false).positionStream,
                 builder: (context, snapshot) {
                   return Text(
                     '${_currentChapterIndex + 1} / ${_chapters.length}',
@@ -382,44 +458,71 @@ class _ReaderScreenState extends State<ReaderScreen> {
   Widget _buildTtsButton() {
     return Consumer<TtsService>(
       builder: (context, tts, _) {
+        Widget icon;
+        String tooltip;
+        VoidCallback? onPressed;
+
         switch (tts.state) {
           case TtsState.idle:
-            return IconButton(
-              icon: const Icon(Icons.volume_up),
-              onPressed: () => _speakCurrentChapter(tts),
-              tooltip: 'Read aloud',
-            );
+            icon = const Icon(Icons.volume_up);
+            tooltip = 'Read aloud';
+            onPressed = () => _speakCurrentChapter(tts);
+            break;
           case TtsState.loading:
-            return const IconButton(
-              icon: Icon(Icons.hourglass_empty),
-              onPressed: null,
-              tooltip: 'Loading...',
+            icon = const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2),
             );
+            tooltip = 'Loading...';
+            onPressed = null;
+            break;
           case TtsState.ready:
-            return IconButton(
-              icon: const Icon(Icons.play_arrow),
-              onPressed: () => _speakCurrentChapter(tts),
-              tooltip: 'Read aloud',
-            );
+            icon = const Icon(Icons.play_arrow);
+            tooltip = 'Read aloud';
+            onPressed = () => _speakCurrentChapter(tts);
+            break;
           case TtsState.playing:
-            return IconButton(
-              icon: const Icon(Icons.pause),
-              onPressed: () => tts.pause(),
-              tooltip: 'Pause',
-            );
+            icon = const Icon(Icons.pause);
+            tooltip = 'Pause';
+            onPressed = () => tts.pause();
+            break;
           case TtsState.paused:
-            return IconButton(
-              icon: const Icon(Icons.play_arrow),
-              onPressed: () => tts.resume(),
-              tooltip: 'Resume',
-            );
+            icon = const Icon(Icons.play_arrow);
+            tooltip = 'Resume';
+            onPressed = () => tts.resume();
+            break;
           case TtsState.error:
-            return IconButton(
-              icon: const Icon(Icons.error_outline),
-              onPressed: () => _speakCurrentChapter(tts),
-              tooltip: 'Error - Retry',
-            );
+            icon = const Icon(Icons.error_outline, color: Colors.red);
+            tooltip = 'Error - Retry';
+            onPressed = () => _speakCurrentChapter(tts);
+            break;
         }
+
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (tts.state == TtsState.playing || tts.state == TtsState.loading && tts.totalChunks > 0)
+              Padding(
+                padding: const EdgeInsets.only(right: 8.0),
+                child: Text(
+                  '${tts.currentChunkIndex + 1}/${tts.totalChunks}',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+              ),
+            IconButton(
+              icon: icon,
+              onPressed: onPressed,
+              tooltip: tooltip,
+            ),
+            if (tts.state == TtsState.playing || tts.state == TtsState.paused)
+              IconButton(
+                icon: const Icon(Icons.stop),
+                onPressed: () => tts.stop(),
+                tooltip: 'Stop',
+              ),
+          ],
+        );
       },
     );
   }

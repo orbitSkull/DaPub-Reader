@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:piper_tts_plugin/enums/piper_voice_pack.dart';
 import 'package:piper_tts_plugin/piper_tts_plugin.dart';
+import '../providers/reader_settings.dart';
+import '../services/tts_service.dart';
+import '../models/piper_voice.dart';
+import 'dart:io';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -11,144 +16,231 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  bool _darkMode = false;
-  double _defaultFontSize = 16.0;
-  double _defaultLineHeight = 1.6;
   double _defaultSpeechRate = 1.0;
   double _defaultPitch = 1.0;
-  PiperVoicePack _selectedVoice = PiperVoicePack.norman;
+  PiperVoicePack _selectedVoicePack = PiperVoicePack.norman;
+  PiperVoice? _selectedCustomVoice;
+  
   bool _isLoadingVoice = false;
+  double _downloadProgress = 0;
+  String _downloadStatus = '';
+  Map<String, bool> _downloadedVoices = {};
 
   @override
   void initState() {
     super.initState();
     _loadSettings();
+    _checkDownloadedVoices();
   }
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     final voiceIndex = prefs.getInt('selectedVoice') ?? PiperVoicePack.norman.index;
+    final customVoiceKey = prefs.getString('selectedCustomVoiceKey');
+    
     setState(() {
-      _darkMode = prefs.getBool('darkMode') ?? false;
-      _defaultFontSize = prefs.getDouble('defaultFontSize') ?? 16.0;
-      _defaultLineHeight = prefs.getDouble('defaultLineHeight') ?? 1.6;
       _defaultSpeechRate = prefs.getDouble('defaultSpeechRate') ?? 1.0;
       _defaultPitch = prefs.getDouble('defaultPitch') ?? 1.0;
-      _selectedVoice = PiperVoicePack.values[voiceIndex];
+      _selectedVoicePack = PiperVoicePack.values[voiceIndex.clamp(0, PiperVoicePack.values.length - 1)];
+      // _selectedCustomVoice will be updated when voices are fetched in build/consumer
+    });
+  }
+
+  Future<void> _checkDownloadedVoices() async {
+    final prefs = await SharedPreferences.getInstance();
+    Map<String, bool> status = {};
+    
+    // Check built-in voices
+    for (var voice in PiperVoicePack.values) {
+      final modelPath = prefs.getString(voice.modelPrefKey);
+      final jsonPath = prefs.getString(voice.jsonPrefKey);
+      status[voice.name] = modelPath != null && File(modelPath).existsSync() &&
+                       jsonPath != null && File(jsonPath).existsSync();
+    }
+    
+    // Check custom voices from TtsService
+    final tts = Provider.of<TtsService>(context, listen: false);
+    for (var voice in tts.availableVoices) {
+      final modelPath = prefs.getString(voice.modelPrefKey);
+      final configPath = prefs.getString(voice.configPrefKey);
+      status[voice.key] = modelPath != null && File(modelPath).existsSync() &&
+                          configPath != null && File(configPath).existsSync();
+    }
+
+    setState(() {
+      _downloadedVoices = status;
     });
   }
 
   Future<void> _saveSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('darkMode', _darkMode);
-    await prefs.setDouble('defaultFontSize', _defaultFontSize);
-    await prefs.setDouble('defaultLineHeight', _defaultLineHeight);
     await prefs.setDouble('defaultSpeechRate', _defaultSpeechRate);
     await prefs.setDouble('defaultPitch', _defaultPitch);
-    await prefs.setInt('selectedVoice', _selectedVoice.index);
+    if (_selectedCustomVoice == null) {
+      await prefs.setInt('selectedVoice', _selectedVoicePack.index);
+      await prefs.remove('selectedCustomVoiceKey');
+    } else {
+      await prefs.setString('selectedCustomVoiceKey', _selectedCustomVoice!.key);
+    }
   }
 
   Future<void> _downloadVoiceModel() async {
-    setState(() => _isLoadingVoice = true);
+    setState(() {
+      _isLoadingVoice = true;
+      _downloadProgress = 0;
+      _downloadStatus = 'Starting download...';
+    });
+
     try {
-      final tts = PiperTtsPlugin();
-      await tts.loadViaVoicePack(_selectedVoice);
+      final ttsService = Provider.of<TtsService>(context, listen: false);
+      
+      if (_selectedCustomVoice != null) {
+        await ttsService.downloadCustomVoice(_selectedCustomVoice!, (progress) {
+          if (mounted) {
+            setState(() {
+              _downloadProgress = progress;
+              _downloadStatus = 'Downloading: ${(progress * 100).toStringAsFixed(0)}%';
+            });
+          }
+        });
+      } else {
+        await ttsService.downloadVoice(_selectedVoicePack, (progress) {
+          if (mounted) {
+            setState(() {
+              _downloadProgress = progress;
+              _downloadStatus = 'Downloading: ${(progress * 100).toStringAsFixed(0)}%';
+            });
+          }
+        });
+      }
+
+      await _checkDownloadedVoices();
       if (mounted) {
+        final name = _selectedCustomVoice?.name ?? _selectedVoicePack.name;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${_selectedVoice.name} voice model loaded!')),
+          SnackBar(content: Text('$name voice downloaded successfully!')),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading voice: $e')),
+          SnackBar(content: Text('Download failed: $e')),
         );
       }
     } finally {
-      if (mounted) setState(() => _isLoadingVoice = false);
+      if (mounted) {
+        setState(() {
+          _isLoadingVoice = false;
+          _downloadStatus = '';
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final settings = context.watch<ReaderSettings>();
+
     return ListView(
       children: [
         _buildSection('Appearance', [
           SwitchListTile(
             title: const Text('Dark Mode'),
-            subtitle: const Text('Use dark theme'),
-            value: _darkMode,
+            subtitle: const Text('Toggle dark/light theme'),
+            value: settings.darkMode,
             onChanged: (value) {
-              setState(() => _darkMode = value);
-              _saveSettings();
+              settings.setDarkMode(value);
             },
           ),
           ListTile(
             title: const Text('Default Font Size'),
-            subtitle: Text('${_defaultFontSize.toInt()}px'),
+            subtitle: Text('${settings.fontSize.toInt()}px'),
             trailing: SizedBox(
-              width: 200,
+              width: 150,
               child: Slider(
-                value: _defaultFontSize,
+                value: settings.fontSize,
                 min: 12,
                 max: 32,
                 divisions: 10,
-                label: '${_defaultFontSize.toInt()}px',
+                label: '${settings.fontSize.toInt()}px',
                 onChanged: (value) {
-                  setState(() => _defaultFontSize = value);
-                  _saveSettings();
+                  settings.setFontSize(value);
                 },
               ),
             ),
           ),
           ListTile(
             title: const Text('Default Line Height'),
-            subtitle: Text(_defaultLineHeight.toStringAsFixed(1)),
+            subtitle: Text(settings.lineHeight.toStringAsFixed(1)),
             trailing: SizedBox(
-              width: 200,
+              width: 150,
               child: Slider(
-                value: _defaultLineHeight,
+                value: settings.lineHeight,
                 min: 1.2,
                 max: 2.0,
                 divisions: 8,
-                label: _defaultLineHeight.toStringAsFixed(1),
+                label: settings.lineHeight.toStringAsFixed(1),
                 onChanged: (value) {
-                  setState(() => _defaultLineHeight = value);
-                  _saveSettings();
+                  settings.setLineHeight(value);
                 },
               ),
             ),
           ),
         ]),
         _buildSection('Text-to-Speech', [
-          ListTile(
-            title: const Text('Voice Model'),
-            subtitle: Text(_selectedVoice.name),
-            trailing: const Icon(Icons.arrow_drop_down),
-            onTap: () => _showVoiceSelector(),
-          ),
-          ListTile(
-            title: const Text('Download/Load Voice'),
-            subtitle: _isLoadingVoice
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Tap to download voice model'),
-            trailing: _isLoadingVoice
-                ? null
-                : ElevatedButton(
-                    onPressed: _downloadVoiceModel,
-                    child: const Text('Download'),
+          Consumer<TtsService>(
+            builder: (context, tts, _) {
+              _selectedCustomVoice = tts.selectedCustomVoice;
+              final voiceName = _selectedCustomVoice?.name ?? _selectedVoicePack.name;
+              final voiceKey = _selectedCustomVoice?.key ?? _selectedVoicePack.name;
+              final isDownloaded = _downloadedVoices[voiceKey] ?? false;
+
+              return Column(
+                children: [
+                  ListTile(
+                    title: const Text('Voice Model'),
+                    subtitle: Text(voiceName),
+                    trailing: const Icon(Icons.arrow_drop_down),
+                    onTap: () => _showVoiceSelector(tts),
                   ),
+                  if (!isDownloaded)
+                    ListTile(
+                      title: const Text('Download Voice'),
+                      subtitle: _isLoadingVoice
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 8),
+                                LinearProgressIndicator(value: _downloadProgress),
+                                const SizedBox(height: 4),
+                                Text(_downloadStatus, style: const TextStyle(fontSize: 12)),
+                              ],
+                            )
+                          : const Text('Model not found. Tap to download.'),
+                      trailing: _isLoadingVoice
+                          ? null
+                          : ElevatedButton.icon(
+                              onPressed: _downloadVoiceModel,
+                              icon: const Icon(Icons.download),
+                              label: const Text('Download'),
+                            ),
+                    )
+                  else
+                    const ListTile(
+                      title: Text('Voice Status'),
+                      subtitle: Text('Downloaded and ready to use'),
+                      trailing: Icon(Icons.check_circle, color: Colors.green),
+                    ),
+                ],
+              );
+            },
           ),
           const Divider(),
           ListTile(
             title: const Text('Default Speech Rate'),
             subtitle: Text('${_defaultSpeechRate.toStringAsFixed(1)}x'),
             trailing: SizedBox(
-              width: 200,
+              width: 150,
               child: Slider(
                 value: _defaultSpeechRate,
                 min: 0.5,
@@ -164,9 +256,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           ListTile(
             title: const Text('Default Pitch'),
-            subtitle: Text('${_defaultPitch.toStringAsFixed(1)}'),
+            subtitle: Text(_defaultPitch.toStringAsFixed(1)),
             trailing: SizedBox(
-              width: 200,
+              width: 150,
               child: Slider(
                 value: _defaultPitch,
                 min: 0.5,
@@ -253,24 +345,182 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _showVoiceSelector() {
+  void _showVoiceSelector(TtsService tts) {
     showModalBottomSheet(
       context: context,
-      builder: (context) => ListView(
-        shrinkWrap: true,
-        children: PiperVoicePack.values.map((voice) {
-          return ListTile(
-            title: Text(voice.name),
-            trailing: _selectedVoice == voice
-                ? const Icon(Icons.check, color: Colors.green)
-                : null,
-            onTap: () {
-              setState(() => _selectedVoice = voice);
-              _saveSettings();
-              Navigator.pop(context);
-            },
-          );
-        }).toList(),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => VoiceSelectionModal(
+        tts: tts,
+        selectedVoicePack: _selectedVoicePack,
+        selectedCustomVoice: _selectedCustomVoice,
+        downloadedVoices: _downloadedVoices,
+        onVoiceSelected: (voicePack, customVoice) {
+          setState(() {
+            _selectedVoicePack = voicePack ?? _selectedVoicePack;
+            _selectedCustomVoice = customVoice;
+          });
+          if (customVoice != null) {
+            tts.setCustomVoice(customVoice);
+          } else if (voicePack != null) {
+            tts.setVoice(voicePack);
+          }
+          _saveSettings();
+          _checkDownloadedVoices();
+        },
+      ),
+    );
+  }
+}
+
+class VoiceSelectionModal extends StatefulWidget {
+  final TtsService tts;
+  final PiperVoicePack selectedVoicePack;
+  final PiperVoice? selectedCustomVoice;
+  final Map<String, bool> downloadedVoices;
+  final Function(PiperVoicePack?, PiperVoice?) onVoiceSelected;
+
+  const VoiceSelectionModal({
+    super.key,
+    required this.tts,
+    required this.selectedVoicePack,
+    this.selectedCustomVoice,
+    required this.downloadedVoices,
+    required this.onVoiceSelected,
+  });
+
+  @override
+  State<VoiceSelectionModal> createState() => _VoiceSelectionModalState();
+}
+
+class _VoiceSelectionModalState extends State<VoiceSelectionModal> {
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filteredBuiltIn = PiperVoicePack.values.where((v) =>
+        v.name.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
+
+    final filteredCustom = widget.tts.availableVoices.where((v) =>
+        v.key.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+        v.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+        v.language.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.7,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (context, scrollController) => Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: 'Search voices...',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear),
+                          onPressed: () {
+                            setState(() {
+                              _searchQuery = '';
+                              _searchController.clear();
+                            });
+                          },
+                        )
+                      : null,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                ),
+                onChanged: (value) {
+                  setState(() {
+                    _searchQuery = value;
+                  });
+                },
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                controller: scrollController,
+                children: [
+                  if (filteredBuiltIn.isNotEmpty) ...[
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                      child: Text('Built-in Voices', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                    ...filteredBuiltIn.map((voice) {
+                      final isDownloaded = widget.downloadedVoices[voice.name] ?? false;
+                      final isSelected = widget.selectedCustomVoice == null && widget.selectedVoicePack == voice;
+                      return ListTile(
+                        title: Text(voice.name),
+                        subtitle: Text(isDownloaded ? 'Downloaded' : 'Available'),
+                        leading: Icon(
+                          isDownloaded ? Icons.check_circle : Icons.download_for_offline,
+                          color: isDownloaded ? Colors.green : Colors.grey,
+                        ),
+                        trailing: isSelected
+                            ? Icon(Icons.radio_button_checked, color: Theme.of(context).colorScheme.primary)
+                            : const Icon(Icons.radio_button_off),
+                        onTap: () {
+                          widget.onVoiceSelected(voice, null);
+                          Navigator.pop(context);
+                        },
+                      );
+                    }),
+                  ],
+                  if (filteredCustom.isNotEmpty) ...[
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                      child: Text('HuggingFace Voices', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                    ...filteredCustom.map((voice) {
+                      final isDownloaded = widget.downloadedVoices[voice.key] ?? false;
+                      final isSelected = widget.selectedCustomVoice?.key == voice.key;
+                      return ListTile(
+                        title: Text(voice.key),
+                        subtitle: Text('${voice.language} - ${voice.quality} ${isDownloaded ? "(Downloaded)" : ""}'),
+                        leading: Icon(
+                          isDownloaded ? Icons.check_circle : Icons.download_for_offline,
+                          color: isDownloaded ? Colors.green : Colors.grey,
+                        ),
+                        trailing: isSelected
+                            ? Icon(Icons.radio_button_checked, color: Theme.of(context).colorScheme.primary)
+                            : const Icon(Icons.radio_button_off),
+                        onTap: () {
+                          widget.onVoiceSelected(null, voice);
+                          Navigator.pop(context);
+                        },
+                      );
+                    }),
+                  ],
+                  if (filteredBuiltIn.isEmpty && filteredCustom.isEmpty)
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(32.0),
+                        child: Text('No voices found'),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

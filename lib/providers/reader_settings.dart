@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ReaderSettings extends ChangeNotifier {
   double _fontSize = 16.0;
@@ -12,13 +12,29 @@ class ReaderSettings extends ChangeNotifier {
   String get fontFamily => _fontFamily;
   bool get darkMode => _darkMode;
 
-  void setFontSize(double size) {
-    _fontSize = size.clamp(12.0, 32.0);
+  ReaderSettings() {
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    _fontSize = prefs.getDouble('defaultFontSize') ?? 16.0;
+    _lineHeight = prefs.getDouble('defaultLineHeight') ?? 1.6;
+    _darkMode = prefs.getBool('darkMode') ?? false;
     notifyListeners();
   }
 
-  void setLineHeight(double height) {
+  Future<void> setFontSize(double size) async {
+    _fontSize = size.clamp(12.0, 32.0);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('defaultFontSize', _fontSize);
+    notifyListeners();
+  }
+
+  Future<void> setLineHeight(double height) async {
     _lineHeight = height.clamp(1.2, 2.0);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('defaultLineHeight', _lineHeight);
     notifyListeners();
   }
 
@@ -27,22 +43,26 @@ class ReaderSettings extends ChangeNotifier {
     notifyListeners();
   }
 
-  void toggleDarkMode() {
-    _darkMode = !_darkMode;
+  Future<void> setDarkMode(bool value) async {
+    _darkMode = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('darkMode', _darkMode);
     notifyListeners();
+  }
+
+  Future<void> toggleDarkMode() async {
+    await setDarkMode(!_darkMode);
   }
 
   void increaseFontSize() {
     if (_fontSize < 32.0) {
-      _fontSize += 2.0;
-      notifyListeners();
+      setFontSize(_fontSize + 2.0);
     }
   }
 
   void decreaseFontSize() {
     if (_fontSize > 12.0) {
-      _fontSize -= 2.0;
-      notifyListeners();
+      setFontSize(_fontSize - 2.0);
     }
   }
 }
