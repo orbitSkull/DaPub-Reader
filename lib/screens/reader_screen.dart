@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:epub_pro/epub_pro.dart';
 import 'package:flutter_html/flutter_html.dart';
+import 'package:provider/provider.dart';
+import '../providers/reader_settings.dart';
 
 class ReaderScreen extends StatefulWidget {
   final String filePath;
@@ -18,11 +20,18 @@ class _ReaderScreenState extends State<ReaderScreen> {
   int _currentChapterIndex = 0;
   bool _isLoading = true;
   String? _error;
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
     _loadBook();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadBook() async {
@@ -83,27 +92,50 @@ class _ReaderScreenState extends State<ReaderScreen> {
       setState(() {
         _currentChapterIndex = index;
       });
+      _scrollController.jumpTo(0);
+    }
+  }
+
+  void _nextChapter() {
+    if (_currentChapterIndex < _chapters.length - 1) {
+      _goToChapter(_currentChapterIndex + 1);
+    }
+  }
+
+  void _previousChapter() {
+    if (_currentChapterIndex > 0) {
+      _goToChapter(_currentChapterIndex - 1);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final settings = context.watch<ReaderSettings>();
+    final isDark = settings.darkMode;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(_book?.title ?? 'Reading'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.text_fields),
+            onPressed: () => _showSettingsSheet(context),
+            tooltip: 'Text Settings',
+          ),
           if (_chapters.isNotEmpty)
             IconButton(
               icon: const Icon(Icons.list),
               onPressed: () => _showChapterList(context),
+              tooltip: 'Chapters',
             ),
         ],
       ),
-      body: _buildBody(),
+      body: _buildBody(settings, isDark),
+      bottomNavigationBar: _buildNavigationBar(),
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildBody(ReaderSettings settings, bool isDark) {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -127,6 +159,12 @@ class _ReaderScreenState extends State<ReaderScreen> {
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: Colors.red),
               ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: _loadBook,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Retry'),
+              ),
             ],
           ),
         ),
@@ -138,21 +176,188 @@ class _ReaderScreenState extends State<ReaderScreen> {
     }
 
     final chapter = _chapters[_currentChapterIndex];
-    final content = chapter.htmlContent;
+    final content = chapter.htmlContent ?? '<p>No content available</p>';
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Html(
-        data: content,
-        style: {
-          'body': Style(
-            fontSize: FontSize(16),
-            lineHeight: const LineHeight(1.6),
+    final backgroundColor = isDark ? Colors.grey[900] : Colors.white;
+    final textColor = isDark ? Colors.white : Colors.black87;
+
+    return Container(
+      color: backgroundColor,
+      child: SingleChildScrollView(
+        controller: _scrollController,
+        padding: const EdgeInsets.all(16),
+        child: Html(
+          data: content,
+          style: {
+            'body': Style(
+              fontSize: FontSize(settings.fontSize),
+              lineHeight: LineHeight(settings.lineHeight),
+              color: textColor,
+              backgroundColor: backgroundColor,
+              fontFamily: settings.fontFamily,
+              margin: Margins.zero,
+              padding: HtmlPaddings.zero,
+            ),
+            'p': Style(
+              margin: Margins.only(bottom: 16),
+              fontSize: FontSize(settings.fontSize),
+              lineHeight: LineHeight(settings.lineHeight),
+            ),
+            'h1': Style(
+              fontSize: FontSize(settings.fontSize * 1.8),
+              fontWeight: FontWeight.bold,
+              margin: Margins.only(top: 24, bottom: 16),
+            ),
+            'h2': Style(
+              fontSize: FontSize(settings.fontSize * 1.5),
+              fontWeight: FontWeight.bold,
+              margin: Margins.only(top: 20, bottom: 12),
+            ),
+            'h3': Style(
+              fontSize: FontSize(settings.fontSize * 1.3),
+              fontWeight: FontWeight.bold,
+              margin: Margins.only(top: 16, bottom: 10),
+            ),
+            'div': Style(
+              fontSize: FontSize(settings.fontSize),
+              lineHeight: LineHeight(settings.lineHeight),
+            ),
+            'span': Style(
+              fontSize: FontSize(settings.fontSize),
+            ),
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget? _buildNavigationBar() {
+    if (_chapters.isEmpty) return null;
+
+    final canGoBack = _currentChapterIndex > 0;
+    final canGoForward = _currentChapterIndex < _chapters.length - 1;
+
+    return Container(
+      color: Colors.grey[100],
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              TextButton.icon(
+                onPressed: canGoBack ? _previousChapter : null,
+                icon: const Icon(Icons.chevron_left),
+                label: const Text('Previous'),
+              ),
+              Text(
+                '${_currentChapterIndex + 1} / ${_chapters.length}',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              TextButton.icon(
+                onPressed: canGoForward ? _nextChapter : null,
+                icon: const Text('Next'),
+                label: const Icon(Icons.chevron_right),
+              ),
+            ],
           ),
-          'p': Style(
-            margin: Margins.only(bottom: 12),
+        ),
+      ),
+    );
+  }
+
+  void _showSettingsSheet(BuildContext context) {
+    final settings = context.read<ReaderSettings>();
+
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Consumer<ReaderSettings>(
+        builder: (context, settings, _) => Container(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Reading Settings',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  const Text('Font Size:'),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.remove),
+                    onPressed: settings.decreaseFontSize,
+                  ),
+                  Text('${settings.fontSize.toInt()}'),
+                  IconButton(
+                    icon: const Icon(Icons.add),
+                    onPressed: settings.increaseFontSize,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Text('Line Height:'),
+                  const Spacer(),
+                  SizedBox(
+                    width: 200,
+                    child: Slider(
+                      value: settings.lineHeight,
+                      min: 1.2,
+                      max: 2.0,
+                      divisions: 8,
+                      label: settings.lineHeight.toStringAsFixed(1),
+                      onChanged: settings.setLineHeight,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              SwitchListTile(
+                title: const Text('Dark Mode'),
+                value: settings.darkMode,
+                onChanged: (_) => settings.toggleDarkMode(),
+                contentPadding: EdgeInsets.zero,
+              ),
+              const SizedBox(height: 16),
+              const Text('Font Family:'),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: [
+                  ChoiceChip(
+                    label: const Text('Serif'),
+                    selected: settings.fontFamily == 'Serif',
+                    onSelected: (_) => settings.setFontFamily('Serif'),
+                  ),
+                  ChoiceChip(
+                    label: const Text('Sans'),
+                    selected: settings.fontFamily == 'Sans',
+                    onSelected: (_) => settings.setFontFamily('Sans'),
+                  ),
+                  ChoiceChip(
+                    label: const Text('Mono'),
+                    selected: settings.fontFamily == 'Mono',
+                    onSelected: (_) => settings.setFontFamily('Mono'),
+                  ),
+                ],
+              ),
+            ],
           ),
-        },
+        ),
       ),
     );
   }
