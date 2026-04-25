@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../providers/reader_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import '../services/tts_service.dart';
 
 class ReaderScreen extends StatefulWidget {
   final String filePath;
@@ -23,15 +24,19 @@ class _ReaderScreenState extends State<ReaderScreen> {
   bool _isLoading = true;
   String? _error;
   final ScrollController _scrollController = ScrollController();
+  TtsService? _ttsService;
 
   @override
   void initState() {
     super.initState();
+    _ttsService = TtsService();
+    _ttsService!.initialize();
     _loadBook();
   }
 
   @override
   void dispose() {
+    _ttsService?.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -295,20 +300,94 @@ class _ReaderScreenState extends State<ReaderScreen> {
                 icon: const Icon(Icons.chevron_left),
                 label: const Text('Previous'),
               ),
-              Text(
-                '${_currentChapterIndex + 1} / ${_chapters.length}',
-                style: Theme.of(context).textTheme.bodyMedium,
+              StreamBuilder(
+                stream: _ttsService?.positionStream ?? const Stream.empty(),
+                builder: (context, snapshot) {
+                  return Text(
+                    '${_currentChapterIndex + 1} / ${_chapters.length}',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  );
+                },
               ),
-              TextButton.icon(
-                onPressed: canGoForward ? _nextChapter : null,
-                icon: const Text('Next'),
-                label: const Icon(Icons.chevron_right),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildTtsButton(),
+                  TextButton.icon(
+                    onPressed: canGoForward ? _nextChapter : null,
+                    icon: const Text('Next'),
+                    label: const Icon(Icons.chevron_right),
+                  ),
+                ],
               ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  Widget _buildTtsButton() {
+    return Consumer<TtsService>(
+      builder: (context, tts, _) {
+        switch (tts.state) {
+          case TtsState.idle:
+            return IconButton(
+              icon: const Icon(Icons.volume_up),
+              onPressed: () => _speakCurrentChapter(tts),
+              tooltip: 'Read aloud',
+            );
+          case TtsState.loading:
+            return const IconButton(
+              icon: Icon(Icons.hourglass_empty),
+              onPressed: null,
+              tooltip: 'Loading...',
+            );
+          case TtsState.ready:
+            return IconButton(
+              icon: const Icon(Icons.play_arrow),
+              onPressed: () => _speakCurrentChapter(tts),
+              tooltip: 'Read aloud',
+            );
+          case TtsState.playing:
+            return IconButton(
+              icon: const Icon(Icons.pause),
+              onPressed: () => tts.pause(),
+              tooltip: 'Pause',
+            );
+          case TtsState.paused:
+            return IconButton(
+              icon: const Icon(Icons.play_arrow),
+              onPressed: () => tts.resume(),
+              tooltip: 'Resume',
+            );
+          case TtsState.error:
+            return IconButton(
+              icon: const Icon(Icons.error_outline),
+              onPressed: () => _speakCurrentChapter(tts),
+              tooltip: 'Error - Retry',
+            );
+        }
+      },
+    );
+  }
+
+  void _speakCurrentChapter(TtsService tts) {
+    if (_chapters.isNotEmpty && _currentChapterIndex < _chapters.length) {
+      final chapter = _chapters[_currentChapterIndex];
+      final content = chapter.htmlContent ?? '';
+      final plainText = _stripHtml(content);
+      if (plainText.isNotEmpty) {
+        tts.speak(plainText);
+      }
+    }
+  }
+
+  String _stripHtml(String html) {
+    return html
+        .replaceAll(RegExp(r'<[^>]*>'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 
   void _showSettingsSheet(BuildContext context) {
