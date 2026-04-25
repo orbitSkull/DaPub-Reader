@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'dart:io';
 
 enum BookmarkType {
+  all,
   completed,
   inProgress,
   dropped,
@@ -13,6 +15,7 @@ enum BookmarkType {
 class BookEntry {
   final String filePath;
   final String title;
+  final String? coverPath;
   final List<BookmarkType> bookmarks;
   final DateTime addedAt;
   final int lastChapter;
@@ -20,6 +23,7 @@ class BookEntry {
   BookEntry({
     required this.filePath,
     required this.title,
+    this.coverPath,
     required this.bookmarks,
     required this.addedAt,
     this.lastChapter = 0,
@@ -28,6 +32,7 @@ class BookEntry {
   Map<String, dynamic> toJson() => {
         'filePath': filePath,
         'title': title,
+        'coverPath': coverPath,
         'bookmarks': bookmarks.map((b) => b.name).toList(),
         'addedAt': addedAt.toIso8601String(),
         'lastChapter': lastChapter,
@@ -36,12 +41,17 @@ class BookEntry {
   factory BookEntry.fromJson(Map<String, dynamic> json) => BookEntry(
         filePath: json['filePath'],
         title: json['title'],
+        coverPath: json['coverPath'],
         bookmarks: (json['bookmarks'] as List)
             .map((b) => BookmarkType.values.firstWhere((e) => e.name == b))
             .toList(),
         addedAt: DateTime.parse(json['addedAt']),
         lastChapter: json['lastChapter'] ?? 0,
       );
+
+  String get fileName => filePath.split('/').last;
+
+  bool get fileExists => File(filePath).existsSync();
 }
 
 class LibraryScreen extends StatefulWidget {
@@ -56,8 +66,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
   Set<BookmarkType> _selectedFilters = {};
   String _sortBy = 'date';
   bool _showFilters = false;
-  bool _multiSelect = false;
-  Set<BookmarkType> _selectedBookmarks = {};
 
   @override
   void initState() {
@@ -72,6 +80,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       final list = jsonDecode(data) as List;
       setState(() {
         _books = list.map((e) => BookEntry.fromJson(e)).toList();
+        _books.removeWhere((b) => !b.fileExists);
       });
     }
   }
@@ -80,6 +89,21 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final prefs = await SharedPreferences.getInstance();
     final data = jsonEncode(_books.map((e) => e.toJson()).toList());
     await prefs.setString('library', data);
+  }
+
+  Future<void> addToLibrary(String filePath, String title) async {
+    final exists = _books.any((b) => b.filePath == filePath);
+    if (!exists) {
+      setState(() {
+        _books.add(BookEntry(
+          filePath: filePath,
+          title: title,
+          bookmarks: [BookmarkType.all],
+          addedAt: DateTime.now(),
+        ));
+      });
+      await _saveBooks();
+    }
   }
 
   List<BookEntry> get _filteredBooks {
@@ -117,14 +141,28 @@ class _LibraryScreenState extends State<LibraryScreen> {
       if (idx != -1) {
         final bookEntry = _books[idx];
         final bookmarks = List<BookmarkType>.from(bookEntry.bookmarks);
-        if (bookmarks.contains(type)) {
-          bookmarks.remove(type);
+        
+        if (type == BookmarkType.all) {
+          if (bookmarks.contains(BookmarkType.all)) {
+            bookmarks.remove(BookmarkType.all);
+          } else {
+            bookmarks.add(BookmarkType.all);
+          }
         } else {
-          bookmarks.add(type);
+          if (bookmarks.contains(type)) {
+            bookmarks.remove(type);
+          } else {
+            bookmarks.add(type);
+          }
+          if (!bookmarks.contains(BookmarkType.all)) {
+            bookmarks.add(BookmarkType.all);
+          }
         }
+        
         _books[idx] = BookEntry(
           filePath: bookEntry.filePath,
           title: bookEntry.title,
+          coverPath: bookEntry.coverPath,
           bookmarks: bookmarks,
           addedAt: bookEntry.addedAt,
           lastChapter: bookEntry.lastChapter,
@@ -132,6 +170,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         _saveBooks();
       }
     });
+    Navigator.pop(context);
   }
 
   void _deleteBook(BookEntry book) {
@@ -139,6 +178,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       _books.removeWhere((b) => b.filePath == book.filePath);
       _saveBooks();
     });
+    Navigator.pop(context);
   }
 
   void _showFilterSheet() {
@@ -199,6 +239,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
+                runSpacing: 8,
                 children: BookmarkType.values.map((type) {
                   return FilterChip(
                     label: Text(_getBookmarkLabel(type)),
@@ -226,6 +267,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   String _getBookmarkLabel(BookmarkType type) {
     switch (type) {
+      case BookmarkType.all:
+        return 'All';
       case BookmarkType.completed:
         return 'Completed';
       case BookmarkType.inProgress:
@@ -241,6 +284,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   Color _getBookmarkColor(BookmarkType type) {
     switch (type) {
+      case BookmarkType.all:
+        return Colors.grey;
       case BookmarkType.completed:
         return Colors.green;
       case BookmarkType.inProgress:
@@ -287,10 +332,31 @@ class _LibraryScreenState extends State<LibraryScreen> {
               itemBuilder: (context, index) {
                 final book = _filteredBooks[index];
                 return ListTile(
-                  leading: const Icon(Icons.book),
-                  title: Text(book.title),
+                  leading: Container(
+                    width: 40,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Center(
+                      child: Text(
+                        book.title.isNotEmpty ? book.title[0].toUpperCase() : '?',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onPrimaryContainer,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                  title: Text(
+                    book.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   subtitle: Wrap(
                     spacing: 4,
+                    runSpacing: 4,
                     children: book.bookmarks.map((b) {
                       return Chip(
                         label: Text(
@@ -304,9 +370,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
                         padding: EdgeInsets.zero,
                         materialTapTargetSize:
                             MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
                       );
                     }).toList(),
                   ),
+                  trailing: const Icon(Icons.more_vert),
                   onTap: () => _showBookOptions(book),
                   onLongPress: () => _showBookOptions(book),
                 );
@@ -329,6 +397,8 @@ class _BookOptionsSheet extends StatelessWidget {
 
   String _getBookmarkLabel(BookmarkType type) {
     switch (type) {
+      case BookmarkType.all:
+        return 'All';
       case BookmarkType.completed:
         return 'Completed';
       case BookmarkType.inProgress:
@@ -353,6 +423,13 @@ class _BookOptionsSheet extends StatelessWidget {
           Text(
             book.title,
             style: Theme.of(context).textTheme.titleLarge,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            book.fileName,
+            style: const TextStyle(color: Colors.grey, fontSize: 12),
           ),
           const SizedBox(height: 16),
           const Text('Bookmarks:'),

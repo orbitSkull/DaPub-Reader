@@ -11,8 +11,8 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _darkMode = false;
   double _defaultFontSize = 16.0;
+  double _defaultLineHeight = 1.6;
   double _defaultSpeechRate = 1.0;
-  String _defaultVoice = 'en_US';
 
   @override
   void initState() {
@@ -25,8 +25,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _darkMode = prefs.getBool('darkMode') ?? false;
       _defaultFontSize = prefs.getDouble('defaultFontSize') ?? 16.0;
+      _defaultLineHeight = prefs.getDouble('defaultLineHeight') ?? 1.6;
       _defaultSpeechRate = prefs.getDouble('defaultSpeechRate') ?? 1.0;
-      _defaultVoice = prefs.getString('defaultVoice') ?? 'en_US';
     });
   }
 
@@ -34,8 +34,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('darkMode', _darkMode);
     await prefs.setDouble('defaultFontSize', _defaultFontSize);
+    await prefs.setDouble('defaultLineHeight', _defaultLineHeight);
     await prefs.setDouble('defaultSpeechRate', _defaultSpeechRate);
-    await prefs.setString('defaultVoice', _defaultVoice);
   }
 
   @override
@@ -70,13 +70,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
-        ]),
-        _buildSection('Reading', [
           ListTile(
             title: const Text('Default Line Height'),
-            subtitle: const Text('Set default line height for reading'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _showLineHeightDialog(),
+            subtitle: Text(_defaultLineHeight.toStringAsFixed(1)),
+            trailing: SizedBox(
+              width: 200,
+              child: Slider(
+                value: _defaultLineHeight,
+                min: 1.2,
+                max: 2.0,
+                divisions: 8,
+                label: _defaultLineHeight.toStringAsFixed(1),
+                onChanged: (value) {
+                  setState(() => _defaultLineHeight = value);
+                  _saveSettings();
+                },
+              ),
+            ),
           ),
         ]),
         _buildSection('Text-to-Speech', [
@@ -97,12 +107,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
               ),
             ),
-          ),
-          ListTile(
-            title: const Text('Default Voice'),
-            subtitle: Text(_defaultVoice),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _showVoiceDialog(),
           ),
         ]),
         _buildSection('Storage', [
@@ -144,56 +148,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ...children,
         const Divider(),
       ],
-    );
-  }
-
-  void _showLineHeightDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Line Height'),
-        content: const Text('Line height setting coming soon...'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showVoiceDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Select Voice'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            RadioListTile<String>(
-              title: const Text('English (US)'),
-              value: 'en_US',
-              groupValue: _defaultVoice,
-              onChanged: (value) {
-                setState(() => _defaultVoice = value!);
-                _saveSettings();
-                Navigator.pop(context);
-              },
-            ),
-            RadioListTile<String>(
-              title: const Text('English (UK)'),
-              value: 'en_GB',
-              groupValue: _defaultVoice,
-              onChanged: (value) {
-                setState(() => _defaultVoice = value!);
-                _saveSettings();
-                Navigator.pop(context);
-              },
-            ),
-          ],
-        ),
-      ),
     );
   }
 

@@ -4,6 +4,8 @@ import 'package:epub_pro/epub_pro.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:provider/provider.dart';
 import '../providers/reader_settings.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 class ReaderScreen extends StatefulWidget {
   final String filePath;
@@ -47,6 +49,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
       final book = await EpubReader.readBook(bytes);
 
       final chapters = _extractChapters(book);
+
+      await _addToLibrary(widget.filePath, book.title ?? 'Untitled');
 
       setState(() {
         _book = book;
@@ -106,6 +110,32 @@ class _ReaderScreenState extends State<ReaderScreen> {
     if (_currentChapterIndex > 0) {
       _goToChapter(_currentChapterIndex - 1);
     }
+  }
+
+  Future<void> _addToLibrary(String filePath, String title) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final data = prefs.getString('library');
+      List<Map<String, dynamic>> books = [];
+      
+      if (data != null) {
+        books = List<Map<String, dynamic>>.from(
+          (jsonDecode(data) as List).map((e) => Map<String, dynamic>.from(e))
+        );
+      }
+
+      final exists = books.any((b) => b['filePath'] == filePath);
+      if (!exists) {
+        books.add({
+          'filePath': filePath,
+          'title': title,
+          'bookmarks': ['all'],
+          'addedAt': DateTime.now().toIso8601String(),
+          'lastChapter': 0,
+        });
+        await prefs.setString('library', jsonEncode(books));
+      }
+    } catch (_) {}
   }
 
   @override
