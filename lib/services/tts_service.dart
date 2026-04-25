@@ -141,13 +141,19 @@ class TtsService extends ChangeNotifier {
 
   void setSpeechRate(double rate) {
     _speechRate = rate.clamp(0.5, 2.0);
-    _player.setSpeed(_speechRate);
+    // If we're playing, update the player speed immediately
+    if (_state == TtsState.playing || _state == TtsState.paused) {
+      _player.setSpeed(_speechRate);
+    }
     notifyListeners();
   }
 
   void setPitch(double pitch) {
     _pitch = pitch.clamp(0.5, 2.0);
-    _player.setPitch(_pitch);
+    // If we're playing, update the player pitch immediately
+    if (_state == TtsState.playing || _state == TtsState.paused) {
+      _player.setPitch(_pitch);
+    }
     notifyListeners();
   }
 
@@ -377,9 +383,11 @@ class TtsService extends ChangeNotifier {
       // Load the audio file
       await _player.setFilePath(outputPath);
       
-      // Fix speed issue: Piper plugin often exports at 22050Hz but some players 
-      // might interpret it as 44100Hz or have internal speed multipliers.
-      // We force the speed here based on the user's setting.
+      // Adjust playback speed based on user setting.
+      // Piper voices are usually 22050Hz. If they sound too fast, 
+      // it might be because the player is using a default of 44100Hz.
+      // We apply the speech rate multiplier. 
+      // If 1.0 is still too fast, we may need to scale the base.
       await _player.setSpeed(_speechRate);
       await _player.setPitch(_pitch);
       
