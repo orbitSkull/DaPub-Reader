@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'reader_screen.dart';
@@ -25,33 +26,26 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
+        String? filePath;
 
-        if (file.path != null) {
-          if (mounted) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => ReaderScreen(
-                  filePath: file.path!,
-                ),
-              ),
-            );
-          }
-        } else if (file.bytes != null) {
+        if (!kIsWeb && file.path != null) {
+          filePath = file.path;
+        } else if (kIsWeb && file.bytes != null) {
           final tempDir = Directory.systemTemp;
           final tempFile = File('${tempDir.path}/${file.name}');
           await tempFile.writeAsBytes(file.bytes!);
+          filePath = tempFile.path;
+        } else if (file.path != null) {
+          filePath = file.path;
+        }
 
-          if (mounted) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => ReaderScreen(
-                  filePath: tempFile.path,
-                ),
-              ),
-            );
-          }
+        if (filePath != null && mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ReaderScreen(filePath: filePath!),
+            ),
+          );
         }
       }
     } catch (e) {
