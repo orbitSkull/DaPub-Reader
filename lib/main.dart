@@ -7,6 +7,8 @@ import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'screens/reader_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/stats_screen.dart';
+import 'screens/stats_screen.dart';
 import 'providers/reader_settings.dart';
 import 'services/tts_service.dart';
 
@@ -113,8 +115,8 @@ class _HomeScreenState extends State<HomeScreen> {
   List<BookEntry> _books = [];
   Set<BookmarkType> _selectedFilters = {};
   String _sortBy = 'date';
-  bool _showFilters = false;
   bool _isLoading = false;
+  int _currentIndex = 0;
 
   @override
   void initState() {
@@ -193,6 +195,15 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  void _showWriterToast() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Coming Soon ...'),
+        duration: Duration(seconds: 2),
+      ),
+    );
   }
 
   List<BookEntry> get _filteredBooks {
@@ -399,14 +410,13 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildLibrary() {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Library'),
         actions: [
           IconButton(
-            icon: Icon(_showFilters ? Icons.filter_list : Icons.filter_list_outlined),
+            icon: const Icon(Icons.filter_list),
             onPressed: _showFilterSheet,
           ),
         ],
@@ -479,15 +489,25 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
               },
             ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: [
+        _buildLibrary(),
+        const StatsScreen(),
+        const SettingsScreen(),
+      ][_currentIndex],
       bottomNavigationBar: BottomNavigationBar(
-        currentIndex: 0,
+        currentIndex: _currentIndex,
         onTap: (index) {
           if (index == 1) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const SettingsScreen()),
-            );
+            _showWriterToast();
+            return;
           }
+          setState(() => _currentIndex = index == 0 ? 0 : 2);
         },
         items: const [
           BottomNavigationBarItem(
@@ -496,24 +516,31 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'Library',
           ),
           BottomNavigationBarItem(
+            icon: Icon(Icons.edit_outlined),
+            activeIcon: Icon(Icons.edit),
+            label: 'Writer',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.bar_chart_outlined),
+            activeIcon: Icon(Icons.bar_chart),
+            label: 'Stats',
+          ),
+          BottomNavigationBarItem(
             icon: Icon(Icons.settings_outlined),
             activeIcon: Icon(Icons.settings),
             label: 'Settings',
           ),
         ],
       ),
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 60, right: 8),
-        child: FloatingActionButton(
-          onPressed: _isLoading ? null : _openFile,
-          child: _isLoading
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.add),
-        ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _isLoading ? null : _openFile,
+        child: _isLoading
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.add),
       ),
     );
   }
