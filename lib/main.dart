@@ -132,11 +132,28 @@ class _HomeScreenState extends State<HomeScreen> {
   String _sortBy = 'date';
   bool _isLoading = false;
   int _currentIndex = 0;
+  bool _isGridView = false;
 
   @override
   void initState() {
     super.initState();
+    _loadSettings();
     _loadBooks();
+  }
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _isGridView = prefs.getBool('libraryGridView') ?? false;
+    });
+  }
+
+  Future<void> _toggleView() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _isGridView = !_isGridView;
+    });
+    await prefs.setBool('libraryGridView', _isGridView);
   }
 
   @override
@@ -467,8 +484,14 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('Library'),
         actions: [
           IconButton(
+            icon: Icon(_isGridView ? Icons.view_list : Icons.grid_view),
+            onPressed: _toggleView,
+            tooltip: _isGridView ? 'Switch to List View' : 'Switch to Grid View',
+          ),
+          IconButton(
             icon: const Icon(Icons.filter_list),
             onPressed: _showFilterSheet,
+            tooltip: 'Filter & Sort',
           ),
         ],
       ),
@@ -488,59 +511,118 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             )
-          : ListView.builder(
-              itemCount: _filteredBooks.length,
-              itemBuilder: (context, index) {
-                final book = _filteredBooks[index];
-                return ListTile(
-                  leading: Container(
-                    width: 40,
-                    height: 56,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Center(
-                      child: Text(
-                        book.title.isNotEmpty ? book.title[0].toUpperCase() : '?',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onPrimaryContainer,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-                  title: Text(
-                    book.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Wrap(
-                    spacing: 4,
-                    runSpacing: 4,
-                    children: book.bookmarks.map((b) {
-                      return Chip(
-                        label: Text(
-                          _getBookmarkLabel(b),
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: _getBookmarkColor(b),
-                          ),
-                        ),
-                        backgroundColor: _getBookmarkColor(b).withOpacity(0.1),
-                        padding: EdgeInsets.zero,
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        visualDensity: VisualDensity.compact,
-                      );
-                    }).toList(),
-                  ),
-                  trailing: const Icon(Icons.more_vert),
-                  onTap: () => _openBook(book),
-                  onLongPress: () => _showBookOptions(book),
-                );
-              },
-            ),
+          : _isGridView ? _buildGridView() : _buildListView(),
     );
+  }
+
+  Widget _buildListView() {
+    return ListView.builder(
+      itemCount: _filteredBooks.length,
+      itemBuilder: (context, index) {
+        final book = _filteredBooks[index];
+        return ListTile(
+          leading: _buildBookCover(book, width: 40, height: 56),
+          title: Text(
+            book.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Wrap(
+            spacing: 4,
+            runSpacing: 4,
+            children: book.bookmarks.map((b) {
+              return Chip(
+                label: Text(
+                  _getBookmarkLabel(b),
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: _getBookmarkColor(b),
+                  ),
+                ),
+                backgroundColor: _getBookmarkColor(b).withOpacity(0.1),
+                padding: EdgeInsets.zero,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
+              );
+            }).toList(),
+          ),
+          trailing: const Icon(Icons.more_vert),
+          onTap: () => _openBook(book),
+          onLongPress: () => _showBookOptions(book),
+        );
+      },
+    );
+  }
+
+  Widget _buildGridView() {
+    return GridView.builder(
+      padding: const EdgeInsets.all(16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        childAspectRatio: 0.6,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+      ),
+      itemCount: _filteredBooks.length,
+      itemBuilder: (context, index) {
+        final book = _filteredBooks[index];
+        return GestureDetector(
+          onTap: () => _openBook(book),
+          onLongPress: () => _showBookOptions(book),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _buildBookCover(book, width: double.infinity, height: double.infinity),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                book.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildBookCover(BookEntry book, {required double width, required double height}) {
+    Widget fallback = Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Center(
+        child: Text(
+          book.title.isNotEmpty ? book.title[0].toUpperCase() : '?',
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onPrimaryContainer,
+            fontWeight: FontWeight.bold,
+            fontSize: width > 50 ? 24 : 16,
+          ),
+        ),
+      ),
+    );
+
+    if (book.coverPath != null && File(book.coverPath!).existsSync()) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(4),
+        child: Image.file(
+          File(book.coverPath!),
+          width: width,
+          height: height,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => fallback,
+        ),
+      );
+    }
+
+    return fallback;
   }
 
   @override

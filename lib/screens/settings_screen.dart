@@ -284,6 +284,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: Text('DaPub Reader Team'),
           ),
         ]),
+        const SizedBox(height: 20),
+        const Center(
+          child: Column(
+            children: [
+              Text(
+                'LUMING',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  letterSpacing: 2,
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'https://github.com/orbitSkull/LUMING',
+                style: TextStyle(
+                  color: Colors.blue,
+                  decoration: TextDecoration.underline,
+                  fontSize: 12,
+                ),
+              ),
+              SizedBox(height: 40),
+            ],
+          ),
+        ),
       ],
     );
   }

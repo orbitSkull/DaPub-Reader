@@ -66,25 +66,34 @@ class TtsService extends ChangeNotifier {
 
   void _initPlayer() {
     _player.playerStateStream.listen((playerState) {
-      if (playerState.processingState == ProcessingState.completed) {
+      // ONLY trigger completion if we are in the 'playing' state and it finishes.
+      // This prevents 'idle' or 'completed' states from other sources triggering it.
+      if (playerState.processingState == ProcessingState.completed && _state == TtsState.playing) {
         _onPlaybackCompleted();
       }
     });
   }
 
   Future<void> _onPlaybackCompleted() async {
+    // Safety check to ensure we don't advance if the list was cleared
+    if (_chunks.isEmpty) return;
+
     if (_chunkIndex < _chunks.length - 1) {
       // Reduced delay between sentences for a more natural flow
       await Future.delayed(const Duration(milliseconds: 150));
-      if (_state == TtsState.playing || _state == TtsState.loading) { 
+      // Re-check state after delay
+      if (_chunks.isNotEmpty && (_state == TtsState.playing || _state == TtsState.loading)) { 
         _chunkIndex++;
         await _synthesizeAndPlayChunk(_chunkIndex);
       }
     } else {
+      debugPrint('TTS: Finished all ${_chunks.length} chunks. Triggering next chapter.');
       _state = TtsState.ready;
       _chunks = [];
+      int finalIndex = _chunkIndex;
       _chunkIndex = 0;
       notifyListeners();
+
       // Added callback for completion to trigger next chapter
       if (onChapterFinished != null) {
         onChapterFinished!();
@@ -508,8 +517,8 @@ class TtsService extends ChangeNotifier {
     }
   }
 
-  Future<void> speak(String text) async {
-    debugPrint('TTS: speak() called with text length: ${text.length}');
+  Future<void> speak(String text, {int startChunkIndex = 0}) async {
+    debugPrint('TTS: speak() called with text length: ${text.length}, startChunk: $startChunkIndex');
     if (text.isEmpty) return;
 
     try {
@@ -540,13 +549,18 @@ class TtsService extends ChangeNotifier {
         _state = TtsState.ready; // Ensure we are in ready state if loaded
         _currentText = text;
         _chunks = _splitIntoChunks(text);
-        _chunkIndex = 0;
-        debugPrint('TTS: Split into ${_chunks.length} chunks');
+        
+        // Ensure start index is within bounds
+        _chunkIndex = (startChunkIndex >= 0 && startChunkIndex < _chunks.length) 
+            ? startChunkIndex 
+            : 0;
+            
+        debugPrint('TTS: Split into ${_chunks.length} chunks, starting at $_chunkIndex');
         
         if (_chunks.isNotEmpty) {
           // Double check we haven't been stopped in the meantime
           if (_currentText == text) {
-            await _synthesizeAndPlayChunk(0);
+            await _synthesizeAndPlayChunk(_chunkIndex);
           }
         } else {
           debugPrint('TTS: No chunks to play');

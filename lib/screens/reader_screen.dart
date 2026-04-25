@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../providers/reader_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'package:path_provider/path_provider.dart';
 import '../services/tts_service.dart';
 import '../models/piper_voice.dart';
 import 'package:just_audio/just_audio.dart' show ProcessingState;
@@ -57,6 +58,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
             if (mounted) {
               final newContent = _stripHtml(_chapters[_currentChapterIndex].htmlContent ?? '');
               Provider.of<TtsService>(context, listen: false).speak(newContent);
+              _saveLastTtsPosition(0); // Reset chunk to 0 for new chapter
             }
           });
         }
@@ -72,7 +74,15 @@ class _ReaderScreenState extends State<ReaderScreen> {
     if (tts.isPlaying && tts.currentChunkIndex != _lastChunkIndex) {
       _lastChunkIndex = tts.currentChunkIndex;
       _scrollToHighlight();
+      _saveLastTtsPosition(_lastChunkIndex);
     }
+  }
+
+  Future<void> _saveLastTtsPosition(int chunkIndex) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('tts_chunk_${widget.filePath}', chunkIndex);
+    } catch (_) {}
   }
 
   void _scrollToHighlight() {
@@ -99,8 +109,21 @@ class _ReaderScreenState extends State<ReaderScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('lastOpenedPath', widget.filePath);
-      await prefs.setInt('lastChapterIndex', _currentChapterIndex);
-      await prefs.setInt('chapter_${widget.filePath}', _currentChapterIndex);
+      await prefs.setInt('lastChapterIndex_${widget.filePath}', _currentChapterIndex);
+      
+      // Update the library entry as well
+      final data = prefs.getString('library');
+      if (data != null) {
+        List<Map<String, dynamic>> books = List<Map<String, dynamic>>.from(
+          (jsonDecode(data) as List).map((e) => Map<String, dynamic>.from(e))
+        );
+        
+        final index = books.indexWhere((b) => b['filePath'] == widget.filePath);
+        if (index != -1) {
+          books[index]['lastChapter'] = _currentChapterIndex;
+          await prefs.setString('library', jsonEncode(books));
+        }
+      }
     } catch (_) {}
   }
 
@@ -121,11 +144,39 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
       final book = await EpubReader.readBook(bytes);
 
+      // Try to find a cover image if the EPUB doesn't have one defined in metadata
+      String? coverPath;
+      if (book.coverImage != null) {
+        // Already handled by EpubReader usually, but we want to check for specific filenames
+      }
+      
+      // Look for specific cover filenames in the EPUB resources
+      final List<String> coverFilenames = ['item_1.jpeg', 'item_1.jpg', 'logo.jpg', 'cover.jpg', 'cover.jpeg'];
+      
+      if (book.content?.images != null && book.content!.images!.isNotEmpty) {
+        // First, check for preferred filenames
+        for (var filename in coverFilenames) {
+          for (var entry in book.content!.images!.entries) {
+            if (entry.key.toLowerCase().endsWith(filename)) {
+              coverPath = await _saveCoverImage(entry.value.content!, entry.key);
+              break;
+            }
+          }
+          if (coverPath != null) break;
+        }
+
+        // Second, if no preferred filename found, take the first available image
+        if (coverPath == null) {
+          final firstEntry = book.content!.images!.entries.first;
+          coverPath = await _saveCoverImage(firstEntry.value.content!, firstEntry.key);
+        }
+      }
+
       final chapters = _extractChapters(book);
 
-      await _addToLibrary(widget.filePath, book.title ?? 'Untitled');
+      final isFirstTime = await _addToLibrary(widget.filePath, book.title ?? 'Untitled', coverPath: coverPath);
 
-      if (mounted) {
+      if (mounted && isFirstTime) {
         _showBookAddedToast();
       }
 
@@ -140,6 +191,14 @@ class _ReaderScreenState extends State<ReaderScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  Future<String> _saveCoverImage(List<int> bytes, String originalName) async {
+    final tempDir = await getTemporaryDirectory();
+    final sanitizedName = originalName.split('/').last;
+    final file = File('${tempDir.path}/cover_${DateTime.now().millisecondsSinceEpoch}_$sanitizedName');
+    await file.writeAsBytes(bytes);
+    return file.path;
   }
 
   List<EpubChapter> _extractChapters(EpubBook book) {
@@ -190,7 +249,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     }
   }
 
-  Future<void> _addToLibrary(String filePath, String title) async {
+  Future<bool> _addToLibrary(String filePath, String title, {String? coverPath}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final data = prefs.getString('library');
@@ -207,13 +266,25 @@ class _ReaderScreenState extends State<ReaderScreen> {
         books.add({
           'filePath': filePath,
           'title': title,
+          'coverPath': coverPath,
           'bookmarks': ['all'],
           'addedAt': DateTime.now().toIso8601String(),
           'lastChapter': 0,
         });
         await prefs.setString('library', jsonEncode(books));
+        return true;
+      } else if (coverPath != null) {
+        // Update cover if it was missing
+        final index = books.indexWhere((b) => b['filePath'] == filePath);
+        if (index != -1 && books[index]['coverPath'] == null) {
+          books[index]['coverPath'] = coverPath;
+          await prefs.setString('library', jsonEncode(books));
+        }
       }
-    } catch (_) {}
+      return false;
+    } catch (_) {
+      return false;
+    }
   }
 
   void _showBookAddedToast() {
@@ -232,12 +303,19 @@ class _ReaderScreenState extends State<ReaderScreen> {
     final settings = context.watch<ReaderSettings>();
     final isDark = settings.darkMode;
 
-    return Scaffold(
-      extendBody: true,
-      extendBodyBehindAppBar: true,
-      appBar: _showUI 
-        ? AppBar(
-            title: Text(_book?.title ?? 'Reading'),
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) {
+          _saveLastRead();
+        }
+      },
+      child: Scaffold(
+        extendBody: true,
+        extendBodyBehindAppBar: true,
+        appBar: _showUI 
+          ? AppBar(
+              title: Text(_book?.title ?? 'Reading'),
             backgroundColor: isDark ? Colors.black.withOpacity(0.7) : Colors.white.withOpacity(0.7),
             elevation: 0,
             actions: [
@@ -257,7 +335,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
         : null,
       body: _buildBody(settings, isDark),
       bottomNavigationBar: _showUI ? _buildNavigationBar() : null,
-    );
+    ));
   }
 
   Widget _buildBody(ReaderSettings settings, bool isDark) {
@@ -585,19 +663,25 @@ class _ReaderScreenState extends State<ReaderScreen> {
     );
   }
 
-  void _speakCurrentChapter(TtsService tts) {
+  void _speakCurrentChapter(TtsService tts) async {
     if (_chapters.isNotEmpty && _currentChapterIndex < _chapters.length) {
       final chapter = _chapters[_currentChapterIndex];
       final content = chapter.htmlContent ?? '';
       final plainText = _stripHtml(content);
       if (plainText.isNotEmpty) {
+        final prefs = await SharedPreferences.getInstance();
+        final startChunk = prefs.getInt('tts_chunk_${widget.filePath}') ?? 0;
+        
+        // If we were already speaking this chapter but stopped, we continue.
+        // If we just loaded the chapter, startChunk will be 0 or last saved.
+        
         setState(() => _isSpeaking = true);
         tts.player.playerStateStream.listen((state) {
           if (state.processingState == ProcessingState.completed) {
             if (mounted) setState(() => _isSpeaking = false);
           }
         });
-        tts.speak(plainText);
+        tts.speak(plainText, startChunkIndex: startChunk);
       }
     }
   }
