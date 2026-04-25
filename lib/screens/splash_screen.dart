@@ -61,7 +61,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
             return Opacity(
               opacity: _fadeAnimation.value,
               child: Transform.scale(
-                scale: _scaleAnimation.scale(_controller.value),
+                scale: _scaleAnimation.value,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [

@@ -74,7 +74,7 @@ void main() async {
 class LumingApp extends StatelessWidget {
   final bool initialDarkMode;
 
-  const DaPubReaderApp({super.key, required this.initialDarkMode});
+  const LumingApp({super.key, required this.initialDarkMode});
 
   @override
   Widget build(BuildContext context) {
