@@ -68,10 +68,10 @@ void main() async {
   final prefs = await SharedPreferences.getInstance();
   final darkMode = prefs.getBool('darkMode') ?? false;
   
-  runApp(DaPubReaderApp(initialDarkMode: darkMode));
+  runApp(LumingApp(initialDarkMode: darkMode));
 }
 
-class DaPubReaderApp extends StatelessWidget {
+class LumingApp extends StatelessWidget {
   final bool initialDarkMode;
 
   const DaPubReaderApp({super.key, required this.initialDarkMode});
@@ -86,7 +86,7 @@ class DaPubReaderApp extends StatelessWidget {
       child: Consumer<ReaderSettings>(
         builder: (context, settings, _) {
           return MaterialApp(
-            title: 'DaPub Reader',
+            title: 'LUMING',
             debugShowCheckedModeBanner: false,
             themeMode: settings.darkMode ? ThemeMode.dark : ThemeMode.light,
             theme: ThemeData(
