@@ -183,7 +183,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['epub'],
+        allowedExtensions: ['epub', 'mobi', 'azw3', 'fb2'],
         allowMultiple: false,
       );
 

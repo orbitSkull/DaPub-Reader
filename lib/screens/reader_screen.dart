@@ -67,6 +67,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
       final file = File(widget.filePath);
       final bytes = await file.readAsBytes();
 
+      final ext = widget.filePath.split('.').last.toLowerCase();
+      if (!['epub', 'mobi', 'azw3', 'fb2'].contains(ext)) {
+        throw const FormatException('Unsupported file format');
+      }
+
       final book = await EpubReader.readBook(bytes);
 
       final chapters = _extractChapters(book);

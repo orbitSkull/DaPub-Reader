@@ -15,11 +15,13 @@ class TtsService extends ChangeNotifier {
   TtsState _state = TtsState.idle;
   String? _currentText;
   double _speechRate = 1.0;
+  double _pitch = 1.0;
   String? _errorMessage;
   String? _audioPath;
 
   TtsState get state => _state;
   double get speechRate => _speechRate;
+  double get pitch => _pitch;
   bool get isPlaying => _state == TtsState.playing;
   bool get isPaused => _state == TtsState.paused;
   String? get errorMessage => _errorMessage;
@@ -42,6 +44,17 @@ class TtsService extends ChangeNotifier {
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     _speechRate = prefs.getDouble('defaultSpeechRate') ?? 1.0;
+    _pitch = prefs.getDouble('defaultPitch') ?? 1.0;
+  }
+
+  void setSpeechRate(double rate) {
+    _speechRate = rate.clamp(0.5, 2.0);
+    notifyListeners();
+  }
+
+  void setPitch(double pitch) {
+    _pitch = pitch.clamp(0.5, 2.0);
+    notifyListeners();
   }
 
   Future<void> initialize() async {

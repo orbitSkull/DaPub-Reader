@@ -13,6 +13,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   double _defaultFontSize = 16.0;
   double _defaultLineHeight = 1.6;
   double _defaultSpeechRate = 1.0;
+  double _defaultPitch = 1.0;
 
   @override
   void initState() {
@@ -27,6 +28,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _defaultFontSize = prefs.getDouble('defaultFontSize') ?? 16.0;
       _defaultLineHeight = prefs.getDouble('defaultLineHeight') ?? 1.6;
       _defaultSpeechRate = prefs.getDouble('defaultSpeechRate') ?? 1.0;
+      _defaultPitch = prefs.getDouble('defaultPitch') ?? 1.0;
     });
   }
 
@@ -36,6 +38,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await prefs.setDouble('defaultFontSize', _defaultFontSize);
     await prefs.setDouble('defaultLineHeight', _defaultLineHeight);
     await prefs.setDouble('defaultSpeechRate', _defaultSpeechRate);
+    await prefs.setDouble('defaultPitch', _defaultPitch);
   }
 
   @override
@@ -103,6 +106,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 label: '${_defaultSpeechRate.toStringAsFixed(1)}x',
                 onChanged: (value) {
                   setState(() => _defaultSpeechRate = value);
+                  _saveSettings();
+                },
+              ),
+            ),
+          ),
+          ListTile(
+            title: const Text('Default Pitch'),
+            subtitle: Text('${_defaultPitch.toStringAsFixed(1)}'),
+            trailing: SizedBox(
+              width: 200,
+              child: Slider(
+                value: _defaultPitch,
+                min: 0.5,
+                max: 2.0,
+                divisions: 6,
+                label: _defaultPitch.toStringAsFixed(1),
+                onChanged: (value) {
+                  setState(() => _defaultPitch = value);
                   _saveSettings();
                 },
               ),
