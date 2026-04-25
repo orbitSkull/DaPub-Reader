@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:piper_tts_plugin/piper_tts_plugin.dart';
 import 'package:piper_tts_plugin/enums/piper_voice_pack.dart';
@@ -402,26 +403,28 @@ class TtsService extends ChangeNotifier {
         return;
       }
 
-      // If already playing, stop first to restart with new text
-      if (_state == TtsState.playing || _state == TtsState.loading) {
-        await stop();
-      }
+      // Stop current playback if any
+      await stop();
 
       _state = TtsState.loading;
       notifyListeners();
 
       debugPrint('TTS: Initializing engine...');
+      // Reset state to idle to force initialize() to actually run
+      _state = TtsState.idle; 
       await initialize();
       
-      // Force state check after initialize
-      if (_state != TtsState.ready && _state != TtsState.error) {
-         debugPrint('TTS: Engine still not ready after init, waiting briefly...');
-         await Future.delayed(const Duration(milliseconds: 500));
+      // Wait for engine to be ready with a timeout
+      int retryCount = 0;
+      while (_state == TtsState.loading && retryCount < 10) {
+        debugPrint('TTS: Engine still loading, waiting (attempt $retryCount)...');
+        await Future.delayed(const Duration(milliseconds: 300));
+        retryCount++;
       }
       
       debugPrint('TTS: Engine state before chunking: $_state');
 
-      if (_state == TtsState.ready || _state == TtsState.error) {
+      if (_state == TtsState.ready) {
         _currentText = text;
         _chunks = _splitIntoChunks(text);
         _chunkIndex = 0;
@@ -435,7 +438,10 @@ class TtsService extends ChangeNotifier {
           notifyListeners();
         }
       } else {
-        debugPrint('TTS: Engine FAILED to reach ready state, current state: $_state');
+        debugPrint('TTS: Engine FAILED to reach ready state. Current state: $_state');
+        _errorMessage = "Engine initialization timed out or failed.";
+        _state = TtsState.error;
+        notifyListeners();
       }
     } catch (e) {
       debugPrint('TTS: Error in speak(): $e');
