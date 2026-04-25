@@ -373,7 +373,15 @@ class TtsService extends ChangeNotifier {
       }
 
       _audioPath = outputPath;
+      
+      // Load the audio file
       await _player.setFilePath(outputPath);
+      
+      // Fix speed issue: Piper plugin often exports at 22050Hz but some players 
+      // might interpret it as 44100Hz or have internal speed multipliers.
+      // We force the speed here based on the user's setting.
+      await _player.setSpeed(_speechRate);
+      await _player.setPitch(_pitch);
       
       // Update state to playing BEFORE calling play so UI can react immediately
       _state = TtsState.playing;
