@@ -21,12 +21,12 @@
 - [x] Add basic text formatting (fonts, sizes, etc.)
 
 ## Phase 4: TTS Integration with Piper Plugin
-- [ ] Add piper_tts_plugin dependency
-- [ ] Implement voice model loading functionality
-- [ ] Create TTS synthesis service
-- [ ] Integrate with EPUB text content
-- [ ] Add playback controls (play, pause, stop, seek)
-- [ ] Implement voice selection UI
+- [x] Add piper_tts_plugin dependency
+- [x] Implement voice model loading functionality
+- [x] Create TTS synthesis service
+- [x] Integrate with EPUB text content
+- [x] Add playback controls (play, pause, stop, seek)
+- [x] Implement voice selection UI
 
 ## Phase 5: Feature Enhancements
 - [ ] Add settings for speech rate and pitch
