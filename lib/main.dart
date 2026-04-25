@@ -8,7 +8,7 @@ import 'dart:convert';
 import 'screens/reader_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/stats_screen.dart';
-import 'screens/stats_screen.dart';
+import 'screens/splash_screen.dart';
 import 'providers/reader_settings.dart';
 import 'services/tts_service.dart';
 
@@ -100,7 +100,11 @@ class LumingApp extends StatelessWidget {
               ),
               useMaterial3: true,
             ),
-            home: const HomeScreen(),
+            initialRoute: '/',
+            routes: {
+              '/': (context) => const SplashScreen(),
+              '/home': (context) => const HomeScreen(),
+            },
           );
         },
       ),
