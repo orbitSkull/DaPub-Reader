@@ -144,20 +144,21 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
       final book = await EpubReader.readBook(bytes);
 
-      // Try to find a cover image if the EPUB doesn't have one defined in metadata
-      String? coverPath;
+      // 1. Try metadata cover first (standard way)
       if (book.coverImage != null) {
-        // Already handled by EpubReader usually, but we want to check for specific filenames
+        final imageBytes = book.coverImage!.content!;
+        coverPath = await _saveCoverImage(imageBytes, 'cover_from_metadata.png');
       }
       
-      // Look for specific cover filenames in the EPUB resources
-      final List<String> coverFilenames = ['item_1.jpeg', 'item_1.jpg', 'logo.jpg', 'cover.jpg', 'cover.jpeg'];
-      
-      if (book.content?.images != null && book.content!.images!.isNotEmpty) {
-        // First, check for preferred filenames
+      // 2. Look for specific cover filenames if metadata cover failed
+      if (coverPath == null && book.content?.images != null && book.content!.images!.isNotEmpty) {
+        final List<String> coverFilenames = ['item_1.jpeg', 'item_1.jpg', 'logo.jpg', 'cover.jpg', 'cover.jpeg', 'thumb.jpg', 'thumbnail.jpg'];
+        
+        // Scan for preferred names
         for (var filename in coverFilenames) {
           for (var entry in book.content!.images!.entries) {
-            if (entry.key.toLowerCase().endsWith(filename)) {
+            final path = entry.key.toLowerCase();
+            if (path.endsWith(filename) || path.contains('/$filename')) {
               coverPath = await _saveCoverImage(entry.value.content!, entry.key);
               break;
             }
@@ -165,7 +166,17 @@ class _ReaderScreenState extends State<ReaderScreen> {
           if (coverPath != null) break;
         }
 
-        // Second, if no preferred filename found, take the first available image
+        // 3. Fallback: Any image that looks like a cover (contains 'cover' in name)
+        if (coverPath == null) {
+          for (var entry in book.content!.images!.entries) {
+            if (entry.key.toLowerCase().contains('cover')) {
+              coverPath = await _saveCoverImage(entry.value.content!, entry.key);
+              break;
+            }
+          }
+        }
+
+        // 4. Ultimate Fallback: Take the first available image
         if (coverPath == null) {
           final firstEntry = book.content!.images!.entries.first;
           coverPath = await _saveCoverImage(firstEntry.value.content!, firstEntry.key);
@@ -194,9 +205,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
   }
 
   Future<String> _saveCoverImage(List<int> bytes, String originalName) async {
-    final tempDir = await getTemporaryDirectory();
+    final appDir = await getApplicationDocumentsDirectory();
     final sanitizedName = originalName.split('/').last;
-    final file = File('${tempDir.path}/cover_${DateTime.now().millisecondsSinceEpoch}_$sanitizedName');
+    final fileName = 'cover_${DateTime.now().millisecondsSinceEpoch}_$sanitizedName';
+    final file = File('${appDir.path}/$fileName');
     await file.writeAsBytes(bytes);
     return file.path;
   }
