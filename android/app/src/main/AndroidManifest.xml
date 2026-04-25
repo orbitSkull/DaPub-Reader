@@ -1,4 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/apk/res/tools"
     package="com.orbitskull.luming">
     <!-- Permissions for file access and storage -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
@@ -36,17 +37,19 @@
             </intent-filter>
         </activity>
 
-        <service android:name="com.ryanheise.just_audio_background.AudioService"
+        <service android:name="com.ryanheise.audioservice.AudioService"
             android:foregroundServiceType="mediaPlayback"
-            android:exported="true">
+            android:exported="true"
+            tools:ignore="Instantiatable">
             <intent-filter>
                 <action android:name="android.media.browse.MediaBrowserService" />
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
             </intent-filter>
         </service>
 
-        <receiver android:name="com.ryanheise.just_audio_background.MediaButtonReceiver"
-            android:exported="true">
+        <receiver android:name="com.ryanheise.audioservice.MediaButtonReceiver"
+            android:exported="true"
+            tools:ignore="Instantiatable">
             <intent-filter>
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
             </intent-filter>
