@@ -12,6 +12,7 @@ import 'package:path_provider/path_provider.dart';
 import '../services/tts_service.dart';
 import '../models/piper_voice.dart';
 import 'package:just_audio/just_audio.dart' show ProcessingState;
+import 'package:archive/archive.dart';
 class ReaderScreen extends StatefulWidget {
   final String filePath;
   final int startChapter;
@@ -157,24 +158,44 @@ class _ReaderScreenState extends State<ReaderScreen> {
         }
       }
 
-      // Search through all images in the book - look for ANY jpg/png/jpeg
-      if (coverPath == null && book.content?.images != null && book.content!.images.isNotEmpty) {
-        debugPrint('Searching for cover image in ${book.content!.images.length} images');
-        
-        final List<String> validExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
-        
-        // Get all valid image entries - just take FIRST valid image found
-        for (final entry in book.content!.images.entries) {
-          final ext = entry.key.toLowerCase();
-          if (validExts.any((e) => ext.endsWith(e)) && entry.value.content != null && entry.value.content!.isNotEmpty) {
-            debugPrint('Found image: ${entry.key}, size: ${entry.value.content!.length}');
-            try {
-              coverPath = await _saveCoverImage(entry.value.content!, entry.key);
+      // If no cover from metadata, extract from epub as zip and find any image
+      if (coverPath == null) {
+        try {
+          debugPrint('Looking for cover in epub as zip...');
+          final epubFile = File(widget.filePath);
+          final bytes = await epubFile.readAsBytes();
+          
+          // Use archive package to read the epub
+          final archive = ZipDecoder().decodeBytes(bytes);
+          
+          // Find all image files
+          final validExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+          final imageFiles = archive.files.where((f) => 
+            f.isFile && validExts.any((e) => f.name.toLowerCase().endsWith(e))
+          ).toList();
+          
+          debugPrint('Found ${imageFiles.length} images in epub');
+          
+          // Sort by file size (largest first - likely cover)
+          imageFiles.sort((a, b) => b.size.compareTo(a.size));
+          
+          for (final imgFile in imageFiles) {
+            final name = imgFile.name.toLowerCase();
+            debugPrint('Found image in epub: ${imgFile.name}, size: ${imgFile.size}');
+            
+            // Skip images in META-INF (usually UI elements)
+            if (name.contains('meta-inf/')) continue;
+            
+            final content = imgFile.content;
+            if (content != null && content.isNotEmpty) {
+              final ext = name.split('.').last;
+              coverPath = await _saveCoverImage(content, 'cover.$ext');
+              debugPrint('Saved cover: $coverPath');
               break;
-            } catch (e) {
-              debugPrint('Error saving image ${entry.key}: $e');
             }
           }
+        } catch (e) {
+          debugPrint('Error extracting cover from zip: $e');
         }
       }
       
