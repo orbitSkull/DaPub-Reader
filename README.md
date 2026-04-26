@@ -15,7 +15,7 @@ LUMING is a modern, high-performance Flutter application designed for an immersi
 - [ ] **LUMING Translation**: Real-time sentence and chapter translation (Coming Soon).
 - [x] **LUMING Writer**: Distraction-free EPUB creation and publishing tools.
 - [x] **IDEABOX**: Categorized scratchpad for quick-capture fragments, Quick search through all ideas, Tag system for organization.
-- [x] **LUMING Stats**: Word count tracking (total and per session), Daily/weekly writing goals with notifications.
+- [x] **LUMING Stats**: Total Word Count, Words Written Today, Project Completion %, Estimated Listening Time, Writing Streak
 - [x] **Official Release**: Stable v1.0.0 builds for Android.
 
 ## 🚀 Key Features
