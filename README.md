@@ -11,7 +11,7 @@ LUMING is a modern, high-performance Flutter application designed for an immersi
 - [x] **Background Playback**: Full notification and lock-screen controls for hands-free reading.
 - [ ] **LUMING Translation**: Real-time sentence and chapter translation (Coming Soon).
 - [ ] **LUMING Writer**: Distraction-free EPUB creation and publishing tools (Coming Soon).
-- [ ] **Official Release**: Stable v1.0.0 builds for Android.
+- [x] **Official Release**: Stable v1.0.0 builds for Android.
 
 ## 🚀 Key Features
 
