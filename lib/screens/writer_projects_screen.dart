@@ -5,42 +5,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'writer_screen.dart';
 
-class WriterProject {
-  final String id;
-  final String title;
-  final List<Chapter> chapters;
-  final DateTime createdAt;
-  final DateTime updatedAt;
-  final int totalWords;
-
-  WriterProject({
-    required this.id,
-    required this.title,
-    this.chapters = const [],
-    required this.createdAt,
-    required this.updatedAt,
-    this.totalWords = 0,
-  });
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'title': title,
-    'chapters': chapters.map((c) => c.toJson()).toList(),
-    'createdAt': createdAt.toIso8601String(),
-    'updatedAt': updatedAt.toIso8601String(),
-    'totalWords': totalWords,
-  };
-
-  factory WriterProject.fromJson(Map<String, dynamic> json) => WriterProject(
-    id: json['id'],
-    title: json['title'],
-    chapters: (json['chapters'] as List?)?.map((c) => Chapter.fromJson(c)).toList() ?? [],
-    createdAt: DateTime.parse(json['createdAt']),
-    updatedAt: DateTime.parse(json['updatedAt']),
-    totalWords: json['totalWords'] ?? 0,
-  );
-}
-
 class Chapter {
   final String id;
   final String title;
@@ -73,6 +37,46 @@ class Chapter {
   );
 }
 
+class WriterProject {
+  final String id;
+  final String title;
+  final List<Chapter> chapters;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final int totalWords;
+  final String? folderPath;
+
+  WriterProject({
+    required this.id,
+    required this.title,
+    this.chapters = const [],
+    required this.createdAt,
+    required this.updatedAt,
+    this.totalWords = 0,
+    this.folderPath,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'chapters': chapters.map((c) => c.toJson()).toList(),
+    'createdAt': createdAt.toIso8601String(),
+    'updatedAt': updatedAt.toIso8601String(),
+    'totalWords': totalWords,
+    'folderPath': folderPath,
+  };
+
+  factory WriterProject.fromJson(Map<String, dynamic> json) => WriterProject(
+    id: json['id'],
+    title: json['title'],
+    chapters: (json['chapters'] as List?)?.map((c) => Chapter.fromJson(c)).toList() ?? [],
+    createdAt: DateTime.parse(json['createdAt']),
+    updatedAt: DateTime.parse(json['updatedAt']),
+    totalWords: json['totalWords'] ?? 0,
+    folderPath: json['folderPath'],
+  );
+}
+
 class WriterProjectsScreen extends StatefulWidget {
   const WriterProjectsScreen({super.key});
 
@@ -82,6 +86,7 @@ class WriterProjectsScreen extends StatefulWidget {
 
 class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
   List<WriterProject> _projects = [];
+  String? _projectFolderPath;
   bool _isLoading = true;
 
   @override
@@ -92,16 +97,22 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
 
   Future<void> _loadProjects() async {
     final prefs = await SharedPreferences.getInstance();
+    _projectFolderPath = prefs.getString('writerProjectFolder');
     final data = prefs.getString('writerProjects');
+    
+    setState(() {
+      _isLoading = true;
+    });
+
     if (data != null) {
-      final list = jsonDecode(data) as List;
-      setState(() {
-        _projects = list.map((p) => WriterProject.fromJson(p)).toList();
-        _isLoading = false;
-      });
-    } else {
-      setState(() => _isLoading = false);
+      _projects = (jsonDecode(data) as List)
+          .map((e) => WriterProject.fromJson(e))
+          .toList();
     }
+
+    setState(() {
+      _isLoading = false;
+    });
   }
 
   Future<void> _saveProjects() async {
@@ -110,7 +121,82 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
     await prefs.setString('writerProjects', data);
   }
 
+  void _showAddOptions() {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_projectFolderPath == null)
+              ListTile(
+                leading: const Icon(Icons.folder_open, color: Colors.blue),
+                title: const Text('Select Project Folder'),
+                subtitle: const Text('Choose where to save your projects'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _selectProjectFolder();
+                },
+              ),
+            ListTile(
+              leading: const Icon(Icons.create, color: Colors.teal),
+              title: const Text('New Empty Project'),
+              subtitle: const Text('Start from scratch'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showNewProjectDialog();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.upload_file, color: Colors.orange),
+              title: const Text('Import EPUB to Edit'),
+              subtitle: const Text('Import existing EPUB to write on'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _importEpub();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _selectProjectFolder() async {
+    try {
+      final result = await FilePicker.platform.getDirectoryPath();
+      if (result != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('writerProjectFolder', result);
+        setState(() {
+          _projectFolderPath = result;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Project folder set: $result')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
   void _showNewProjectDialog() {
+    if (_projectFolderPath == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select project folder first'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
     final controller = TextEditingController();
     showDialog(
       context: context,
@@ -132,12 +218,20 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
           TextButton(
             onPressed: () async {
               if (controller.text.isNotEmpty) {
+                final now = DateTime.now();
                 final project = WriterProject(
-                  id: DateTime.now().millisecondsSinceEpoch.toString(),
+                  id: now.millisecondsSinceEpoch.toString(),
                   title: controller.text,
-                  createdAt: DateTime.now(),
-                  updatedAt: DateTime.now(),
+                  createdAt: now,
+                  updatedAt: now,
+                  folderPath: _projectFolderPath,
                 );
+                
+                if (_projectFolderPath != null) {
+                  final projectDir = Directory('$_projectFolderPath/${project.id}');
+                  await projectDir.create(recursive: true);
+                }
+                
                 _projects.insert(0, project);
                 await _saveProjects();
                 setState(() {});
@@ -160,12 +254,42 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
     ).then((_) => _loadProjects());
   }
 
+  Future<void> _importEpub() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['epub'],
+      );
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Imported: ${file.name}')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Projects'),
         backgroundColor: Colors.teal,
+        actions: [
+          if (_projectFolderPath != null)
+            IconButton(
+              icon: const Icon(Icons.folder),
+              onPressed: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Folder: $_projectFolderPath')),
+                );
+              },
+            ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -226,193 +350,6 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
         backgroundColor: Colors.teal,
         child: const Icon(Icons.add),
       ),
-    );
-  }
-
-  void _showAddOptions() {
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) => Container(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.create, color: Colors.teal),
-              title: const Text('New Empty Project'),
-              subtitle: const Text('Start from scratch'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _showNewProjectDialog();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.upload_file, color: Colors.orange),
-              title: const Text('Import EPUB to Edit'),
-              subtitle: const Text('Import existing EPUB to write on'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _importEpub();
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _navigateToProject(WriterProject project) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => WriterScreen(project: project),
-      ),
-    ).then((_) => _loadProjects());
-  }
-
-  Future<void> _importEpub() async {
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['epub'],
-      );
-      if (result != null && result.files.isNotEmpty) {
-        final file = result.files.first;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Imported: ${file.name}')),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
-      );
-    }
-  }
-}
-
-class FocusModeScreen extends StatefulWidget {
-  final WriterProject project;
-
-  const FocusModeScreen({super.key, required this.project});
-
-  @override
-  State<FocusModeScreen> createState() => _FocusModeScreenState();
-}
-
-class _FocusModeScreenState extends State<FocusModeScreen> {
-  late TextEditingController _titleController;
-  late TextEditingController _contentController;
-  bool _isFocusMode = false;
-  int _autoSaveSeconds = 30;
-  int _wordCount = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _titleController = TextEditingController(text: widget.project.title);
-    _contentController = TextEditingController();
-    _loadSettings();
-  }
-
-  void _loadSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _autoSaveSeconds = prefs.getInt('autoSaveInterval') ?? 30;
-    });
-  }
-
-  void _updateWordCount() {
-    final words = _contentController.text.trim().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
-    setState(() => _wordCount = words);
-  }
-
-  @override
-  void dispose() {
-    _titleController.dispose();
-    _contentController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: _isFocusMode
-          ? null
-          : AppBar(
-              title: TextField(
-                controller: _titleController,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
-                  border: InputBorder.none,
-                  hintText: 'Project Title',
-                ),
-              ),
-              backgroundColor: Colors.teal,
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.fullscreen),
-                  onPressed: () => setState(() => _isFocusMode = true),
-                  tooltip: 'Focus Mode',
-                ),
-              ],
-            ),
-      body: _isFocusMode
-          ? GestureDetector(
-              onTap: () => setState(() => _isFocusMode = false),
-              child: Container(
-                color: Colors.black,
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 600),
-                    child: TextField(
-                      controller: _contentController,
-                      maxLines: null,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        height: 1.8,
-                      ),
-                      decoration: const InputDecoration(
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.all(24),
-                        hintText: 'Start writing...',
-                        hintStyle: TextStyle(color: Colors.grey),
-                      ),
-                      onChanged: (_) => _updateWordCount(),
-                    ),
-                  ),
-                ),
-              ),
-            )
-          : Column(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _contentController,
-                    maxLines: null,
-                    expands: true,
-                    textAlignVertical: TextAlignVertical.top,
-                    decoration: const InputDecoration(
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.all(16),
-                      hintText: 'Start writing your story...',
-                    ),
-                    onChanged: (_) => _updateWordCount(),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  color: Colors.grey[100],
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('$_wordCount words', style: const TextStyle(color: Colors.grey)),
-                      const Text('Auto-save enabled', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
     );
   }
 }
