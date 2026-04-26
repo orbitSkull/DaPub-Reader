@@ -13,6 +13,8 @@ import 'screens/splash_screen.dart';
 import 'screens/writer_stats_screen.dart';
 import 'screens/writer_portal_screen.dart';
 import 'screens/writer_settings_screen.dart';
+import 'screens/ideabox_screen.dart';
+import 'screens/writer_projects_screen.dart';
 import 'providers/reader_settings.dart';
 import 'services/tts_service.dart';
 import 'services/writer_service.dart';
@@ -1007,23 +1009,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildWriterProjects() {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Projects'),
-        backgroundColor: Colors.teal,
-      ),
-      body: const Center(
-        child: Text('Writer Projects - Coming Soon', style: TextStyle(color: Colors.teal)),
-      ),
-    );
+    return const WriterProjectsScreen();
   }
 
   Widget _buildWriterIdeaBox() {
-    return const Scaffold(
-      body: Center(
-        child: Text('Writer IdeaBox - Coming Soon', style: TextStyle(color: Colors.teal)),
-      ),
-    );
+    return const IdeaBoxScreen();
   }
 
   Widget _buildWriterStats() {
