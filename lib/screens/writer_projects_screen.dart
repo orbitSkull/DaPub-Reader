@@ -5,83 +5,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'writer_screen.dart';
-
-enum ProjectBookmark {
-  all,
-  recent,
-  favourite,
-}
-
-class Chapter {
-  final String id;
-  final String title;
-  final String content;
-  final int order;
-
-  Chapter({
-    required this.id,
-    required this.title,
-    this.content = '',
-    required this.order,
-  });
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'title': title,
-    'content': content,
-    'order': order,
-  };
-
-  factory Chapter.fromJson(Map<String, dynamic> json) => Chapter(
-    id: json['id'],
-    title: json['title'],
-    content: json['content'] ?? '',
-    order: json['order'] ?? 0,
-  );
-}
-
-class WriterProject {
-  final String id;
-  final String title;
-  final String? epubPath;
-  final List<Chapter> chapters;
-  final DateTime createdAt;
-  final DateTime updatedAt;
-  final List<ProjectBookmark> bookmarks;
-
-  WriterProject({
-    required this.id,
-    required this.title,
-    this.epubPath,
-    this.chapters = const [],
-    required this.createdAt,
-    required this.updatedAt,
-    this.bookmarks = const [ProjectBookmark.all],
-  });
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'title': title,
-    'epubPath': epubPath,
-    'chapters': chapters.map((c) => c.toJson()).toList(),
-    'createdAt': createdAt.toIso8601String(),
-    'updatedAt': updatedAt.toIso8601String(),
-    'bookmarks': bookmarks.map((b) => b.name).toList(),
-  };
-
-  factory WriterProject.fromJson(Map<String, dynamic> json) => WriterProject(
-    id: json['id'],
-    title: json['title'],
-    epubPath: json['epubPath'],
-    chapters: (json['chapters'] as List?)?.map((c) => Chapter.fromJson(c)).toList() ?? [],
-    createdAt: DateTime.parse(json['createdAt']),
-    updatedAt: DateTime.parse(json['updatedAt']),
-    bookmarks: (json['bookmarks'] as List?)?.map((b) => ProjectBookmark.values.firstWhere(
-      (e) => e.name == b,
-      orElse: () => ProjectBookmark.all,
-    )).toList() ?? [ProjectBookmark.all],
-  );
-}
+import '../services/epub_project_service.dart';
 
 class WriterProjectsScreen extends StatefulWidget {
   const WriterProjectsScreen({super.key});
@@ -91,7 +15,8 @@ class WriterProjectsScreen extends StatefulWidget {
 }
 
 class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
-  List<WriterProject> _projects = [];
+  final EpubProjectService _service = EpubProjectService();
+  List<EpisodeProject> _projects = [];
   String? _projectFolderPath;
   bool _isLoading = true;
   bool _hasPermission = false;
@@ -116,7 +41,6 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
   Future<void> _loadSettingsAndProjects() async {
     final prefs = await SharedPreferences.getInstance();
     _projectFolderPath = prefs.getString('writerProjectFolder');
-    
     await _loadProjects();
   }
 
@@ -136,8 +60,12 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
               try {
                 final content = await entity.readAsString();
                 final json = jsonDecode(content);
-                final project = WriterProject.fromJson(json);
-                _projects.add(project);
+                final project = EpisodeProject.fromJson(json);
+                
+                if (project.epubPath != null && 
+                    await File(project.epubPath!).existsSync()) {
+                  _projects.add(project);
+                }
               } catch (e) {
                 debugPrint('Error loading project ${entity.path}: $e');
               }
@@ -154,7 +82,7 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
     });
   }
 
-  List<WriterProject> get _filteredProjects {
+  List<EpisodeProject> get _filteredProjects {
     if (_selectedBookmark == ProjectBookmark.all) {
       return _projects;
     }
@@ -198,7 +126,7 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
     setState(() {});
   }
 
-  Future<void> _saveProject(WriterProject project) async {
+  Future<void> _saveProject(EpisodeProject project) async {
     if (_projectFolderPath == null) return;
     
     final sanitizedTitle = project.title.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
@@ -208,7 +136,62 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
     await file.writeAsString(jsonEncode(project.toJson()));
   }
 
-  Future<void> _toggleBookmark(WriterProject project, ProjectBookmark bookmark) async {
+  void _showRenameDialog(EpisodeProject project) {
+    final controller = TextEditingController(text: project.title);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rename Project'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Project Title',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              if (controller.text.isNotEmpty) {
+                final oldTitle = project.title;
+                final updatedProject = EpisodeProject(
+                  id: project.id,
+                  title: controller.text,
+                  epubPath: project.epubPath,
+                  coverPath: project.coverPath,
+                  createdAt: project.createdAt,
+                  updatedAt: DateTime.now(),
+                  bookmarks: project.bookmarks,
+                );
+                await _saveProject(updatedProject);
+                
+                final oldFile = File('$_projectFolderPath/$oldTitle.json');
+                if (await oldFile.exists()) {
+                  await oldFile.delete();
+                }
+                
+                setState(() {
+                  final index = _projects.indexWhere((p) => p.id == project.id);
+                  if (index != -1) {
+                    _projects[index] = updatedProject;
+                  }
+                });
+                if (mounted) Navigator.pop(ctx);
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _toggleBookmark(EpisodeProject project, ProjectBookmark bookmark) async {
     final updatedBookmarks = List<ProjectBookmark>.from(project.bookmarks);
     if (updatedBookmarks.contains(bookmark)) {
       updatedBookmarks.remove(bookmark);
@@ -216,11 +199,11 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
       updatedBookmarks.add(bookmark);
     }
     
-    final updatedProject = WriterProject(
+    final updatedProject = EpisodeProject(
       id: project.id,
       title: project.title,
       epubPath: project.epubPath,
-      chapters: project.chapters,
+      coverPath: project.coverPath,
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
       bookmarks: updatedBookmarks,
@@ -236,13 +219,20 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
     });
   }
 
-  Future<void> _deleteProject(WriterProject project) async {
+  Future<void> _deleteProject(EpisodeProject project) async {
     final sanitizedTitle = project.title.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
     final filePath = '$_projectFolderPath/$sanitizedTitle.json';
     
     final file = File(filePath);
     if (await file.exists()) {
       await file.delete();
+    }
+    
+    if (project.epubPath != null) {
+      final epubFile = File(project.epubPath!);
+      if (await epubFile.exists()) {
+        await epubFile.delete();
+      }
     }
     
     _projects.removeWhere((p) => p.id == project.id);
@@ -264,15 +254,6 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
               onTap: () {
                 Navigator.pop(ctx);
                 _showNewProjectDialog();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.upload_file, color: Colors.orange),
-              title: const Text('Import EPUB to Edit'),
-              subtitle: const Text('Import existing EPUB to write on'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _importEpub();
               },
             ),
           ],
@@ -313,9 +294,26 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
             onPressed: () async {
               if (controller.text.isNotEmpty) {
                 final now = DateTime.now();
-                final project = WriterProject(
+                String? epubPath;
+                
+                try {
+                  epubPath = await _service.createEmptyEpub(
+                    controller.text,
+                    _projectFolderPath!,
+                  );
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error creating project: $e')),
+                    );
+                  }
+                  return;
+                }
+                
+                final project = EpisodeProject(
                   id: now.millisecondsSinceEpoch.toString(),
                   title: controller.text,
+                  epubPath: epubPath,
                   createdAt: now,
                   updatedAt: now,
                 );
@@ -333,7 +331,93 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
     );
   }
 
-  void _showBookmarkSheet(WriterProject project) {
+  void _showCoverDialog(EpisodeProject project) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Cover for "${project.title}"',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 16),
+            if (project.coverPath != null)
+              const Chip(label: Text('Cover image set')),
+            ListTile(
+              leading: const Icon(Icons.image, color: Colors.teal),
+              title: const Text('Set Cover Image'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                final path = await _service.pickCoverImage();
+                if (path != null && project.epubPath != null) {
+                  final file = File(path);
+                  final bytes = await file.readAsBytes();
+                  final ext = path.split('.').last;
+                  
+                  final coverName = await _service.setCover(
+                    project.epubPath!,
+                    bytes,
+                    ext,
+                  );
+                  
+                  if (coverName != null) {
+                    final updatedProject = EpisodeProject(
+                      id: project.id,
+                      title: project.title,
+                      epubPath: project.epubPath,
+                      coverPath: coverName,
+                      createdAt: project.createdAt,
+                      updatedAt: DateTime.now(),
+                      bookmarks: project.bookmarks,
+                    );
+                    await _saveProject(updatedProject);
+                    setState(() {
+                      final index = _projects.indexWhere((p) => p.id == project.id);
+                      if (index != -1) {
+                        _projects[index] = updatedProject;
+                      }
+                    });
+                  }
+                }
+              },
+            ),
+            if (project.coverPath != null)
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.red),
+                title: const Text('Remove Cover'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  if (project.epubPath != null) {
+                    await _service.removeCover(project.epubPath!);
+                    final updatedProject = EpisodeProject(
+                      id: project.id,
+                      title: project.title,
+                      epubPath: project.epubPath,
+                      coverPath: null,
+                      createdAt: project.createdAt,
+                      updatedAt: DateTime.now(),
+                      bookmarks: project.bookmarks,
+                    );
+                    await _saveProject(updatedProject);
+                    setState(() {
+                      final index = _projects.indexWhere((p) => p.id == project.id);
+                      if (index != -1) {
+                        _projects[index] = updatedProject;
+                      }
+                    });
+                  }
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showBookmarkSheet(EpisodeProject project) {
     showModalBottomSheet(
       context: context,
       builder: (ctx) => Container(
@@ -368,41 +452,13 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
     );
   }
 
-  void _openProject(WriterProject project) {
+  void _openProject(EpisodeProject project) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => WriterScreen(project: project, onSave: _saveProject),
       ),
     ).then((_) => _loadProjects());
-  }
-
-  Future<void> _importEpub() async {
-    if (!_hasPermission) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please grant storage permission first'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['epub'],
-      );
-      if (result != null && result.files.isNotEmpty) {
-        final file = result.files.first;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Imported: ${file.name}')),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
-      );
-    }
   }
 
   @override
@@ -476,7 +532,7 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
                           padding: const EdgeInsets.all(8),
                           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: 2,
-                            childAspectRatio: 0.85,
+                            childAspectRatio: 0.75,
                             crossAxisSpacing: 8,
                             mainAxisSpacing: 8,
                           ),
@@ -494,7 +550,9 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
                                       child: Container(
                                         width: double.infinity,
                                         color: Colors.teal[100],
-                                        child: const Icon(Icons.book, size: 48, color: Colors.teal),
+                                        child: project.coverPath != null
+                                            ? const Icon(Icons.image, size: 48, color: Colors.teal)
+                                            : const Icon(Icons.book, size: 48, color: Colors.teal),
                                       ),
                                     ),
                                     Padding(
@@ -509,8 +567,8 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
                                             style: const TextStyle(fontWeight: FontWeight.bold),
                                           ),
                                           Text(
-                                            '${project.chapters.length} chapters',
-                                            style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                            '${project.epubPath ?? 'No EPUB'}',
+                                            style: const TextStyle(fontSize: 10, color: Colors.grey),
                                           ),
                                         ],
                                       ),
@@ -528,14 +586,25 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
                             final project = _filteredProjects[index];
                             return Card(
                               child: ListTile(
-                                leading: const CircleAvatar(
+                                leading: CircleAvatar(
                                   backgroundColor: Colors.teal,
-                                  child: Icon(Icons.book, color: Colors.white),
+                                  child: Icon(
+                                    project.coverPath != null ? Icons.image : Icons.book,
+                                    color: Colors.white,
+                                  ),
                                 ),
                                 title: Text(project.title),
-                                subtitle: Text('${project.chapters.length} chapters'),
+                                subtitle: Text(project.epubPath ?? 'No EPUB'),
                                 trailing: PopupMenuButton(
                                   itemBuilder: (ctx) => [
+                                    const PopupMenuItem(
+                                      value: 'cover',
+                                      child: Text('Cover'),
+                                    ),
+                                    const PopupMenuItem(
+                                      value: 'rename',
+                                      child: Text('Rename'),
+                                    ),
                                     const PopupMenuItem(
                                       value: 'bookmark',
                                       child: Text('Bookmark'),
@@ -550,6 +619,10 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
                                       await _deleteProject(project);
                                     } else if (value == 'bookmark') {
                                       _showBookmarkSheet(project);
+                                    } else if (value == 'rename') {
+                                      _showRenameDialog(project);
+                                    } else if (value == 'cover') {
+                                      _showCoverDialog(project);
                                     }
                                   },
                                 ),
