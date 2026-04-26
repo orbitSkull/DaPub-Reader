@@ -14,7 +14,8 @@ LUMING is a modern, high-performance Flutter application designed for an immersi
 - [x] **Custom Bookmarks**: Create unlimited custom labels for organizing books.
 - [ ] **LUMING Translation**: Real-time sentence and chapter translation (Coming Soon).
 - [ ] **LUMING Writer**: Distraction-free EPUB creation and publishing tools (Coming Soon).
-- [ ] **IDEABOX**
+- [ ] **IDEABOX**: Categorized scratchpad for quick-capture fragments, Quick search through all ideas, Tag system for organization (Coming Soon).
+- [ ] **LUMING Stats**: Word count tracking (total and per session), Daily/weekly writing goals with notifications
 - [x] **Official Release**: Stable v1.0.0 builds for Android.
 
 ## 🚀 Key Features
@@ -28,40 +29,6 @@ LUMING is a modern, high-performance Flutter application designed for an immersi
 ## ✍️ Writer Mode Features (Coming Soon)
 
 LUMING is evolving into a dual-mode app with a dedicated Writer mode for content creators:
-
-### 0: Projects 📁
-- File-manager for manuscripts organized by Chapters/Scenes
-- Drag-and-drop chapter reordering
-- Character tracking per story
-- POV (Point of View) tracking per chapter
-- Timeline view for story events
-- Auto-versioning and revision history
-
-### 1: IdeaBox 💡
-- Categorized scratchpad for quick-capture fragments
-- Voice-to-text notes for hands-free capturing
-- Tag system for organization
-- Quick search through all ideas
-
-### 2: Writer Stats 📊
-- Word count tracking (total and per session)
-- Daily writing streaks
-- Velocity metrics (words per hour)
-- Session timer
-- Daily/weekly writing goals with notifications
-
-### 3: Reader Portal 📚
-- Quick bridge back to Reader Library
-- "Your Creations" collection for published works
-- One-tap export to EPUB
-
-### 4: Studio Settings ⚙️
-- Typewriter Mode (distraction-free fullscreen)
-- Focus mode with customizable themes
-- EPUB export presets
-- Custom dictionaries
-- Auto-save intervals
-- Writing prompts generator
 
 ### Creative Writing Tools
 - **Voice Typing**: Dictation for hands-free writing
