@@ -644,23 +644,38 @@ TextButton.icon(
                   final chapter = _chapters[index];
                   final isSelected = index == _currentChapterIndex;
                   return ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: isSelected ? Colors.teal : Colors.grey[300],
+                      radius: 16,
+                      child: Text(
+                        '${index + 1}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isSelected ? Colors.white : Colors.black87,
+                        ),
+                      ),
+                    ),
                     title: Text(
                       chapter.title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
+                    subtitle: Text('Order: ${chapter.order}'),
                     selected: isSelected,
-                    onTap: () {
-                      _goToChapter(index);
-                      Navigator.pop(context);
-                    },
+                    onTap: () => _goToChapter(index),
                     trailing: PopupMenuButton<String>(
                       onSelected: (val) {
                         if (val == 'delete') {
                           _deleteChapter(index);
+                        } else if (val == 'rename') {
+                          _showRenameChapterDialog(index);
                         }
                       },
                       itemBuilder: (context) => [
+                        const PopupMenuItem(
+                          value: 'rename',
+                          child: Text('Rename'),
+                        ),
                         const PopupMenuItem(
                           value: 'delete',
                           child: Text('Delete'),
@@ -692,6 +707,49 @@ TextButton.icon(
       _isEditMode = true;
       _hasUnsavedChanges = true;
     });
+  }
+
+  void _showRenameChapterDialog(int index) {
+    if (index < 0 || index >= _chapters.length) return;
+    
+    final controller = TextEditingController(text: _chapters[index].title);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rename Chapter'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Chapter Title',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              if (controller.text.isNotEmpty) {
+                setState(() {
+                  _chapters[index] = Chapter(
+                    id: _chapters[index].id,
+                    title: controller.text,
+                    content: _chapters[index].content,
+                    order: _chapters[index].order,
+                  );
+                  _hasUnsavedChanges = true;
+                });
+                Navigator.pop(ctx);
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _deleteChapter(int index) {
