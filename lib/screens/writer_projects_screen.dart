@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:file_picker/file_picker.dart';
 import 'dart:convert';
+import 'dart:io';
+import 'writer_screen.dart';
 
 class WriterProject {
   final String id;
@@ -152,7 +155,7 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => FocusModeScreen(project: project),
+        builder: (context) => WriterScreen(project: project),
       ),
     ).then((_) => _loadProjects());
   }
@@ -219,11 +222,71 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
                   },
                 ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _showNewProjectDialog,
+        onPressed: _showAddOptions,
         backgroundColor: Colors.teal,
         child: const Icon(Icons.add),
       ),
     );
+  }
+
+  void _showAddOptions() {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.create, color: Colors.teal),
+              title: const Text('New Empty Project'),
+              subtitle: const Text('Start from scratch'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showNewProjectDialog();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.upload_file, color: Colors.orange),
+              title: const Text('Import EPUB to Edit'),
+              subtitle: const Text('Import existing EPUB to write on'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _importEpub();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _navigateToProject(WriterProject project) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => WriterScreen(project: project),
+      ),
+    ).then((_) => _loadProjects());
+  }
+
+  Future<void> _importEpub() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['epub'],
+      );
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Imported: ${file.name}')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+    }
   }
 }
 
