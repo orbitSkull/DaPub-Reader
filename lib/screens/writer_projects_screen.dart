@@ -40,40 +40,40 @@ class Chapter {
 class WriterProject {
   final String id;
   final String title;
+  final String? epubPath;
   final List<Chapter> chapters;
   final DateTime createdAt;
   final DateTime updatedAt;
   final int totalWords;
-  final String? folderPath;
 
   WriterProject({
     required this.id,
     required this.title,
+    this.epubPath,
     this.chapters = const [],
     required this.createdAt,
     required this.updatedAt,
     this.totalWords = 0,
-    this.folderPath,
   });
 
   Map<String, dynamic> toJson() => {
     'id': id,
     'title': title,
+    'epubPath': epubPath,
     'chapters': chapters.map((c) => c.toJson()).toList(),
     'createdAt': createdAt.toIso8601String(),
     'updatedAt': updatedAt.toIso8601String(),
     'totalWords': totalWords,
-    'folderPath': folderPath,
   };
 
   factory WriterProject.fromJson(Map<String, dynamic> json) => WriterProject(
     id: json['id'],
     title: json['title'],
+    epubPath: json['epubPath'],
     chapters: (json['chapters'] as List?)?.map((c) => Chapter.fromJson(c)).toList() ?? [],
     createdAt: DateTime.parse(json['createdAt']),
     updatedAt: DateTime.parse(json['updatedAt']),
     totalWords: json['totalWords'] ?? 0,
-    folderPath: json['folderPath'],
   );
 }
 
@@ -98,16 +98,34 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
   Future<void> _loadProjects() async {
     final prefs = await SharedPreferences.getInstance();
     _projectFolderPath = prefs.getString('writerProjectFolder');
-    final data = prefs.getString('writerProjects');
     
     setState(() {
       _isLoading = true;
+      _projects = [];
     });
 
-    if (data != null) {
-      _projects = (jsonDecode(data) as List)
-          .map((e) => WriterProject.fromJson(e))
-          .toList();
+    if (_projectFolderPath != null) {
+      try {
+        final folder = Directory(_projectFolderPath!);
+        if (await folder.exists()) {
+          final files = folder.listSync();
+          for (final entity in files) {
+            if (entity is File && entity.path.endsWith('.json')) {
+              try {
+                final content = await entity.readAsString();
+                final json = jsonDecode(content);
+                final project = WriterProject.fromJson(json);
+                _projects.add(project);
+              } catch (e) {
+                debugPrint('Error loading project ${entity.path}: $e');
+              }
+            }
+          }
+          _projects.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        }
+      } catch (e) {
+        debugPrint('Error loading projects: $e');
+      }
     }
 
     setState(() {
@@ -115,10 +133,27 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
     });
   }
 
-  Future<void> _saveProjects() async {
-    final prefs = await SharedPreferences.getInstance();
-    final data = jsonEncode(_projects.map((p) => p.toJson()).toList());
-    await prefs.setString('writerProjects', data);
+  Future<void> _saveProject(WriterProject project) async {
+    if (_projectFolderPath == null) return;
+    
+    final sanitizedTitle = project.title.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
+    final filePath = '$_projectFolderPath/$sanitizedTitle.json';
+    
+    final file = File(filePath);
+    await file.writeAsString(jsonEncode(project.toJson()));
+  }
+
+  Future<void> _deleteProject(WriterProject project) async {
+    final sanitizedTitle = project.title.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
+    final filePath = '$_projectFolderPath/$sanitizedTitle.json';
+    
+    final file = File(filePath);
+    if (await file.exists()) {
+      await file.delete();
+    }
+    
+    _projects.removeWhere((p) => p.id == project.id);
+    setState(() {});
   }
 
   void _showAddOptions() {
@@ -129,16 +164,15 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (_projectFolderPath == null)
-              ListTile(
-                leading: const Icon(Icons.folder_open, color: Colors.blue),
-                title: const Text('Select Project Folder'),
-                subtitle: const Text('Choose where to save your projects'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _selectProjectFolder();
-                },
-              ),
+            ListTile(
+              leading: const Icon(Icons.folder_open, color: Colors.blue),
+              title: Text(_projectFolderPath == null ? 'Select Project Folder' : 'Change Project Folder'),
+              subtitle: Text(_projectFolderPath ?? 'Choose where to save your projects'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _selectProjectFolder();
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.create, color: Colors.teal),
               title: const Text('New Empty Project'),
@@ -224,16 +258,10 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
                   title: controller.text,
                   createdAt: now,
                   updatedAt: now,
-                  folderPath: _projectFolderPath,
                 );
                 
-                if (_projectFolderPath != null) {
-                  final projectDir = Directory('$_projectFolderPath/${project.id}');
-                  await projectDir.create(recursive: true);
-                }
-                
+                await _saveProject(project);
                 _projects.insert(0, project);
-                await _saveProjects();
                 setState(() {});
                 if (mounted) Navigator.pop(ctx);
               }
@@ -334,9 +362,7 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
                           ],
                           onSelected: (value) async {
                             if (value == 'delete') {
-                              _projects.removeWhere((p) => p.id == project.id);
-                              await _saveProjects();
-                              setState(() {});
+                              await _deleteProject(project);
                             }
                           },
                         ),
