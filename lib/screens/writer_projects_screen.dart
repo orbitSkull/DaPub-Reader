@@ -4,8 +4,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:convert';
 import 'dart:io';
+import 'package:path/path.dart' as p;
 import 'writer_screen.dart';
 import '../services/epub_project_service.dart';
+import '../models/bookmark_type.dart';
 
 class WriterProjectsScreen extends StatefulWidget {
   const WriterProjectsScreen({super.key});
@@ -21,6 +23,171 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
   String? _projectFolderPath;
   bool _isGridView = false;
   final EpubProjectService _service = EpubProjectService();
+  Set<BookmarkType> _selectedFilters = {};
+  String _sortBy = 'date';
+
+  List<EpisodeProject> get _filteredProjects {
+    var projects = List<EpisodeProject>.from(_projects);
+    
+    if (_selectedFilters.isNotEmpty) {
+      projects = projects.where((project) {
+        return project.bookmarks.any((b) => _selectedFilters.contains(b));
+      }).toList();
+    }
+
+    if (_sortBy == 'date') {
+      projects.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    } else if (_sortBy == 'title') {
+      projects.sort((a, b) => a.title.compareTo(b.title));
+    }
+
+    return projects;
+  }
+
+  void _toggleBookmark(EpisodeProject project, BookmarkType type) {
+    setState(() {
+      final idx = _projects.indexWhere((p) => p.id == project.id);
+      if (idx != -1) {
+        final projectEntry = _projects[idx];
+        final bookmarks = List<BookmarkType>.from(projectEntry.bookmarks);
+        
+        if (type == BookmarkType.all) {
+          if (bookmarks.contains(BookmarkType.all)) {
+            bookmarks.remove(BookmarkType.all);
+          } else {
+            bookmarks.add(BookmarkType.all);
+          }
+        } else {
+          if (bookmarks.contains(type)) {
+            bookmarks.remove(type);
+          } else {
+            bookmarks.add(type);
+          }
+          if (!bookmarks.contains(BookmarkType.all)) {
+            bookmarks.add(BookmarkType.all);
+          }
+        }
+        
+        final updated = EpisodeProject(
+          id: projectEntry.id,
+          title: projectEntry.title,
+          epubPath: projectEntry.epubPath,
+          coverPath: projectEntry.coverPath,
+          createdAt: projectEntry.createdAt,
+          updatedAt: projectEntry.updatedAt,
+          bookmarks: bookmarks,
+        );
+        _projects[idx] = updated;
+        _saveProject(updated);
+      }
+    });
+  }
+
+  void _showFilterSheet() {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) => Container(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Filter & Sort',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      setSheetState(() {
+                        _selectedFilters = {};
+                        _sortBy = 'date';
+                      });
+                      setState(() {});
+                    },
+                    child: const Text('Reset'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              const Text('Sort by:'),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: [
+                  ChoiceChip(
+                    label: const Text('Last Edited'),
+                    selected: _sortBy == 'date',
+                    onSelected: (_) {
+                      setSheetState(() => _sortBy = 'date');
+                      setState(() {});
+                    },
+                  ),
+                  ChoiceChip(
+                    label: const Text('Title'),
+                    selected: _sortBy == 'title',
+                    onSelected: (_) {
+                      setSheetState(() => _sortBy = 'title');
+                      setState(() {});
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              const Text('Filter by Bookmark:'),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: BookmarkType.values.map((type) {
+                  return FilterChip(
+                    label: Text(_getBookmarkLabel(type)),
+                    selected: _selectedFilters.contains(type),
+                    onSelected: (selected) {
+                      setSheetState(() {
+                        if (selected) {
+                          _selectedFilters.add(type);
+                        } else {
+                          _selectedFilters.remove(type);
+                        }
+                      });
+                      setState(() {});
+                    },
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 24),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _getBookmarkLabel(BookmarkType type) {
+    switch (type) {
+      case BookmarkType.all: return 'All';
+      case BookmarkType.completed: return 'Completed';
+      case BookmarkType.inProgress: return 'In Progress';
+      case BookmarkType.dropped: return 'Dropped';
+      case BookmarkType.favourite: return 'Favourite';
+      case BookmarkType.custom: return 'Custom';
+    }
+  }
+
+  Color _getBookmarkColor(BookmarkType type) {
+    switch (type) {
+      case BookmarkType.all: return Colors.grey;
+      case BookmarkType.completed: return Colors.green;
+      case BookmarkType.inProgress: return Colors.blue;
+      case BookmarkType.dropped: return Colors.red;
+      case BookmarkType.favourite: return Colors.amber;
+      case BookmarkType.custom: return Colors.purple;
+    }
+  }
 
   @override
   void initState() {
@@ -40,10 +207,11 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
   }
 
   Future<void> _loadProjects() async {
+    setState(() => _isLoading = true);
     if (_projectFolderPath == null) {
       final folder = Directory('/storage/emulated/0/LUMING');
-      if (!await folder.exists()) {
-        await folder.create(recursive: true);
+      if (!folder.existsSync()) {
+        folder.createSync(recursive: true);
       }
       _projectFolderPath = folder.path;
       final prefs = await SharedPreferences.getInstance();
@@ -52,8 +220,10 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
 
     try {
       final folder = Directory(_projectFolderPath!);
-      if (await folder.exists()) {
+      if (folder.existsSync()) {
         final entities = folder.listSync();
+        final Map<String, EpisodeProject> projectMap = {};
+
         for (var entity in entities) {
           if (entity is File && entity.path.endsWith('.json')) {
             try {
@@ -62,14 +232,18 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
               final project = EpisodeProject.fromJson(json);
               
               if (project.epubPath != null && 
-                  await File(project.epubPath!).existsSync()) {
-                _projects.add(project);
+                  File(project.epubPath!).existsSync()) {
+                if (!projectMap.containsKey(project.id) || 
+                    project.updatedAt.isAfter(projectMap[project.id]!.updatedAt)) {
+                  projectMap[project.id] = project;
+                }
               }
             } catch (e) {
               debugPrint('Error loading project ${entity.path}: $e');
             }
           }
         }
+        _projects = projectMap.values.toList();
       }
     } catch (e) {
       debugPrint('Error loading projects: $e');
@@ -81,11 +255,14 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
   Future<void> _saveProject(EpisodeProject project) async {
     if (_projectFolderPath == null) return;
     
-    final sanitizedTitle = project.title.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
-    final filePath = '$_projectFolderPath/$sanitizedTitle-${project.id}.json';
+    final filePath = '$_projectFolderPath/${_getJsonName(project.id)}';
     
     final file = File(filePath);
     await file.writeAsString(jsonEncode(project.toJson()));
+  }
+
+  String _getJsonName(String id) {
+    return 'project-$id.json';
   }
 
   void _showAddOptions() {
@@ -178,8 +355,10 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
                 
                 await _saveProject(project);
                 _projects.insert(0, project);
-                setState(() {});
-                if (mounted) Navigator.pop(ctx);
+                if (mounted) {
+                  setState(() {});
+                  Navigator.pop(ctx);
+                }
               }
             },
             child: const Text('Create'),
@@ -202,9 +381,9 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
           final project = await _service.importEpub(path, _projectFolderPath!);
           if (project != null) {
             await _saveProject(project);
-            _projects.insert(0, project);
-            setState(() {});
             if (mounted) {
+              _projects.insert(0, project);
+              setState(() {});
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(content: Text('Imported: ${project.title}')),
               );
@@ -220,18 +399,24 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
   Future<void> _deleteProject(EpisodeProject project) async {
     if (_projectFolderPath == null) return;
     
-    final sanitizedTitle = project.title.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
-    final filePath = '$_projectFolderPath/$sanitizedTitle-${project.id}.json';
+    final filePath = '$_projectFolderPath/${_getJsonName(project.id)}';
     
     final file = File(filePath);
-    if (await file.exists()) {
-      await file.delete();
+    if (file.existsSync()) {
+      file.deleteSync();
     }
     
     if (project.epubPath != null) {
       final epubFile = File(project.epubPath!);
-      if (await epubFile.exists()) {
-        await epubFile.delete();
+      if (epubFile.existsSync()) {
+        epubFile.deleteSync();
+      }
+    }
+
+    if (project.coverPath != null) {
+      final coverFile = File(project.coverPath!);
+      if (coverFile.existsSync()) {
+        coverFile.deleteSync();
       }
     }
     
@@ -250,6 +435,7 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final filteredProjects = _filteredProjects;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Projects'),
@@ -259,6 +445,10 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
           onPressed: _requestPermission,
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.filter_list),
+            onPressed: _showFilterSheet,
+          ),
           IconButton(
             icon: Icon(_isGridView ? Icons.list : Icons.grid_view),
             onPressed: () => setState(() => _isGridView = !_isGridView),
@@ -285,16 +475,16 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
                     ],
                   ),
                 )
-              : _projects.isEmpty
+              : filteredProjects.isEmpty
                   ? Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           const Icon(Icons.library_books_outlined, size: 64, color: Colors.grey),
                           const SizedBox(height: 16),
-                          const Text('No Projects Yet', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                          const Text('No Projects Found', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                           const SizedBox(height: 8),
-                          const Text('Tap + to create your first project', style: TextStyle(color: Colors.grey)),
+                          const Text('Tap + to create your first project or check filters', style: TextStyle(color: Colors.grey)),
                         ],
                       ),
                     )
@@ -307,18 +497,18 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
                             crossAxisSpacing: 12,
                             mainAxisSpacing: 12,
                           ),
-                          itemCount: _projects.length,
+                          itemCount: filteredProjects.length,
                           itemBuilder: (context, index) {
-                            final project = _projects[index];
+                            final project = filteredProjects[index];
                             return _buildGridItem(project);
                           },
                         )
                       : ListView.separated(
                           padding: const EdgeInsets.all(16),
-                          itemCount: _projects.length,
+                          itemCount: filteredProjects.length,
                           separatorBuilder: (ctx, i) => const SizedBox(height: 8),
                           itemBuilder: (context, index) {
-                            final project = _projects[index];
+                            final project = filteredProjects[index];
                             return _buildListItem(project);
                           },
                         ),
@@ -335,17 +525,47 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
   Widget _buildListItem(EpisodeProject project) {
     return Card(
       child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: Colors.teal,
-          child: Text(
-            project.title.isNotEmpty ? project.title[0].toUpperCase() : '?',
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-          ),
-        ),
+        leading: project.coverPath != null && File(project.coverPath!).existsSync()
+            ? ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: Image.file(
+                  File(project.coverPath!),
+                  width: 40,
+                  height: 60,
+                  fit: BoxFit.cover,
+                ),
+              )
+            : CircleAvatar(
+                backgroundColor: Colors.teal,
+                child: Text(
+                  project.title.isNotEmpty ? project.title[0].toUpperCase() : '?',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+              ),
         title: Text(project.title),
-        subtitle: Text(
-          'Last edited: ${_formatDate(project.updatedAt)}',
-          style: const TextStyle(fontSize: 12),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Last edited: ${_formatDate(project.updatedAt)}',
+              style: const TextStyle(fontSize: 12),
+            ),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 4,
+              children: project.bookmarks.map((b) => Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: _getBookmarkColor(b).withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _getBookmarkLabel(b),
+                  style: TextStyle(fontSize: 10, color: _getBookmarkColor(b), fontWeight: FontWeight.bold),
+                ),
+              )).toList(),
+            ),
+          ],
         ),
         trailing: PopupMenuButton(
           itemBuilder: (ctx) => [
@@ -361,6 +581,7 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
           },
         ),
         onTap: () => _openProject(project),
+        onLongPress: () => _showProjectOptions(project),
       ),
     );
   }
@@ -371,30 +592,59 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
         onTap: () => _openProject(project),
         onLongPress: () => _showProjectOptions(project),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(12),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              CircleAvatar(
-                radius: 28,
-                backgroundColor: Colors.teal,
-                child: Text(
-                  project.title.isNotEmpty ? project.title[0].toUpperCase() : '?',
-                  style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
-                ),
-              ),
-              const SizedBox(height: 12),
+              project.coverPath != null && File(project.coverPath!).existsSync()
+                  ? Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: Image.file(
+                          File(project.coverPath!),
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    )
+                  : CircleAvatar(
+                      radius: 24,
+                      backgroundColor: Colors.teal,
+                      child: Text(
+                        project.title.isNotEmpty ? project.title[0].toUpperCase() : '?',
+                        style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+              const SizedBox(height: 8),
               Text(
                 project.title,
                 textAlign: TextAlign.center,
-                maxLines: 2,
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.bold),
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
               Text(
                 _formatDate(project.updatedAt),
-                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+              ),
+              const SizedBox(height: 6),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: project.bookmarks.take(3).map((b) => Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: _getBookmarkColor(b).withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      _getBookmarkLabel(b),
+                      style: TextStyle(fontSize: 8, color: _getBookmarkColor(b), fontWeight: FontWeight.bold),
+                    ),
+                  )).toList(),
+                ),
               ),
             ],
           ),
@@ -406,24 +656,81 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
   void _showProjectOptions(EpisodeProject project) {
     showModalBottomSheet(
       context: context,
-      builder: (ctx) => Container(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(project.title, style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 16),
-            ListTile(
-              leading: const Icon(Icons.edit),
-              title: const Text('Rename'),
-              onTap: () { Navigator.pop(ctx); _showRenameDialog(project); },
-            ),
-            ListTile(
-              leading: const Icon(Icons.delete, color: Colors.red),
-              title: const Text('Delete', style: TextStyle(color: Colors.red)),
-              onTap: () { Navigator.pop(ctx); _deleteProject(project); },
-            ),
-          ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) => Container(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(project.title, style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 16),
+              const Text('Bookmarks:'),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: BookmarkType.values.map((type) {
+                  final isSelected = project.bookmarks.contains(type);
+                  return FilterChip(
+                    label: Text(_getBookmarkLabel(type)),
+                    selected: isSelected,
+                    onSelected: (_) {
+                      _toggleBookmark(project, type);
+                      setModalState(() {});
+                    },
+                  );
+                }).toList(),
+              ),
+              const Divider(height: 32),
+              ListTile(
+                leading: const Icon(Icons.image),
+                title: const Text('Change Cover'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final path = await _service.pickCoverImage();
+                  if (path != null) {
+                    final coversDir = Directory('$_projectFolderPath/covers');
+                    if (!coversDir.existsSync()) coversDir.createSync(recursive: true);
+                    final ext = p.extension(path);
+                    final newPath = '${coversDir.path}/${project.id}$ext';
+                    File(path).copySync(newPath);
+                    
+                    // Also update the internal EPUB's cover if it exists
+                    if (project.epubPath != null) {
+                      final imageBytes = await File(path).readAsBytes();
+                      await _service.setCover(project.epubPath!, imageBytes, ext.replaceAll('.', ''));
+                    }
+                    
+                    final updated = EpisodeProject(
+                      id: project.id,
+                      title: project.title,
+                      epubPath: project.epubPath,
+                      coverPath: newPath,
+                      createdAt: project.createdAt,
+                      updatedAt: DateTime.now(),
+                      bookmarks: project.bookmarks,
+                    );
+                    await _saveProject(updated);
+                    setState(() {
+                      final idx = _projects.indexWhere((p) => p.id == project.id);
+                      if (idx != -1) _projects[idx] = updated;
+                    });
+                  }
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.edit),
+                title: const Text('Rename'),
+                onTap: () { Navigator.pop(ctx); _showRenameDialog(project); },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.red),
+                title: const Text('Delete', style: TextStyle(color: Colors.red)),
+                onTap: () { Navigator.pop(ctx); _deleteProject(project); },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -452,6 +759,7 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
                   coverPath: project.coverPath,
                   createdAt: project.createdAt,
                   updatedAt: DateTime.now(),
+                  bookmarks: project.bookmarks,
                 );
                 await _saveProject(updated);
                 setState(() {

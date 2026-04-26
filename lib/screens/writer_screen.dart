@@ -1,9 +1,15 @@
 import 'dart:ui';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../services/tts_service.dart';
 import '../providers/reader_settings.dart';
 import '../services/epub_project_service.dart';
+import '../models/piper_voice.dart';
+import '../models/episode_project.dart';
+import 'settings_screen.dart';
 
 class WriterScreen extends StatefulWidget {
   final EpisodeProject project;
@@ -27,10 +33,11 @@ class _WriterScreenState extends State<WriterScreen> {
   bool _hasUnsavedChanges = false;
   bool _isEditMode = false;
   bool _isLoading = true;
-  bool _showWordCount = true;
-  bool _typewriterScrolling = false;
-  bool _focusMode = false;
   int _wordCount = 0;
+
+  final stt.SpeechToText _speech = stt.SpeechToText();
+  bool _isListening = false;
+  String _lastRecognizedText = '';
 
   @override
   void initState() {
@@ -58,9 +65,14 @@ class _WriterScreenState extends State<WriterScreen> {
   }
 
   String _stripHtml(String html) {
+    // Remove script and style tags
     String content = html.replaceAll(RegExp(r'<(script|style)[^>]*>.*?</\1>', dotAll: true), '');
-    content = content.replaceAll(RegExp(r'<(br|p|div|li|h[1-6])[^>]*>', caseSensitive: false), '\n');
-    content = content.replaceAll(RegExp(r'<[^>]*>'), ' ');
+    // Replace block tags with newlines
+    content = content.replaceAll(RegExp(r'<(p|div|li|h[1-6])[^>]*>', caseSensitive: false), '\n');
+    content = content.replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n');
+    // Remove all other tags
+    content = content.replaceAll(RegExp(r'<[^>]*>'), '');
+    // Decode entities
     content = content
         .replaceAll('&nbsp;', ' ')
         .replaceAll('&amp;', '&')
@@ -68,17 +80,32 @@ class _WriterScreenState extends State<WriterScreen> {
         .replaceAll('&gt;', '>')
         .replaceAll('&quot;', '"')
         .replaceAll('&#39;', "'");
-    content = content.replaceAll(RegExp(r'\s+'), ' ').trim();
+    
+    // Clean up multiple newlines while preserving single ones
+    content = content.replaceAll(RegExp(r'\n\s*\n+'), '\n\n').trim();
     return content;
+  }
+
+  String _wrapInHtml(String text) {
+    final paragraphs = text.split('\n');
+    final buffer = StringBuffer();
+    for (var p in paragraphs) {
+      if (p.trim().isNotEmpty) {
+        buffer.write('<p>${p.trim().replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')}</p>\n');
+      }
+    }
+    return buffer.toString();
   }
 
   void _updateWordCount() {
     final text = _contentController.text;
-    if (text.trim().isEmpty) {
-      _wordCount = 0;
-    } else {
-      _wordCount = text.trim().split(RegExp(r'\s+')).length;
-    }
+    setState(() {
+      if (text.trim().isEmpty) {
+        _wordCount = 0;
+      } else {
+        _wordCount = text.trim().split(RegExp(r'\s+')).length;
+      }
+    });
   }
 
   @override
@@ -94,10 +121,11 @@ class _WriterScreenState extends State<WriterScreen> {
 
   Future<void> _saveCurrentChapter() async {
     if (_chapters.isNotEmpty && _currentChapterIndex < _chapters.length && widget.project.epubPath != null) {
+      final htmlContent = _wrapInHtml(_contentController.text);
       _chapters[_currentChapterIndex] = ChapterData(
         id: _chapters[_currentChapterIndex].id,
         title: _chapters[_currentChapterIndex].title,
-        content: _contentController.text,
+        content: htmlContent,
         order: _chapters[_currentChapterIndex].order,
       );
       await _service.saveChapters(widget.project.epubPath!, _chapters);
@@ -118,25 +146,27 @@ class _WriterScreenState extends State<WriterScreen> {
     if (widget.onSave != null) {
       await widget.onSave!(updated);
     }
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Saved'), duration: Duration(seconds: 1)),
-      );
-      setState(() {
-        _hasUnsavedChanges = false;
-        _isEditMode = false;
-      });
-    }
+    if (!mounted) return;
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Saved'), duration: Duration(seconds: 1)),
+    );
+    setState(() {
+      _hasUnsavedChanges = false;
+      _isEditMode = false;
+    });
   }
 
   void _goToChapter(int index) {
     if (index >= 0 && index < _chapters.length) {
       if (_hasUnsavedChanges) {
         _saveCurrentChapter();
+        _hasUnsavedChanges = false;
       }
       setState(() {
         _currentChapterIndex = index;
         _contentController.text = _stripHtml(_chapters[index].content);
+        _updateWordCount();
       });
       _scrollController.jumpTo(0);
     }
@@ -150,6 +180,8 @@ class _WriterScreenState extends State<WriterScreen> {
     if (_isLoading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
+
+    final hideUI = settings.focusMode && _isEditMode && !_showUI;
 
     return PopScope(
       canPop: false,
@@ -166,7 +198,7 @@ class _WriterScreenState extends State<WriterScreen> {
         extendBody: true,
         extendBodyBehindAppBar: true,
         backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFF5F5F7),
-        appBar: _showUI ? AppBar(
+        appBar: _showUI && !hideUI ? AppBar(
           title: Text(
             _chapters.isNotEmpty && _currentChapterIndex < _chapters.length
                 ? _chapters[_currentChapterIndex].title
@@ -189,14 +221,14 @@ class _WriterScreenState extends State<WriterScreen> {
               },
             ),
             IconButton(
-              icon: Icon(_showWordCount ? Icons.abc : Icons.abc_outlined),
-              onPressed: () => setState(() => _showWordCount = !_showWordCount),
+              icon: const Icon(Icons.abc),
+              onPressed: () => _showSettingsSheet(context),
             ),
             if (_chapters.isNotEmpty) IconButton(icon: const Icon(Icons.format_list_bulleted_rounded), onPressed: () => _showChapterList(context)),
           ],
         ) : null,
         body: _buildBody(settings, isDark),
-        bottomNavigationBar: _showUI && _chapters.isNotEmpty ? _buildNavigationBar() : null,
+        bottomNavigationBar: _showUI && !hideUI && _chapters.isNotEmpty ? _buildNavigationBar() : null,
       ),
     );
   }
@@ -277,7 +309,7 @@ class _WriterScreenState extends State<WriterScreen> {
               ),
             ),
           ),
-          if (_showWordCount && _isEditMode)
+          if (settings.showWordCount && _isEditMode)
             Positioned(
               top: _showUI ? kToolbarHeight + 50 : 16,
               right: 16,
@@ -331,21 +363,17 @@ class _WriterScreenState extends State<WriterScreen> {
                       textAlign: TextAlign.center,
                     ),
                   ),
-                  if (!_isEditMode)
-                    Consumer<TtsService>(
-                      builder: (context, ttsButton, _) {
-                        return IconButton(
-                          icon: const Icon(Icons.volume_up),
-                          onPressed: () => _speakCurrentChapter(ttsButton),
-                        );
-                      },
-                    )
-                  else
-                    TextButton.icon(
-                      onPressed: canGoForward ? () => _goToChapter(_currentChapterIndex + 1) : null,
-                      icon: Icon(Icons.chevron_right, color: canGoForward ? (isDark ? Colors.white : Colors.black87) : Colors.grey),
-                      label: Text('Next', style: TextStyle(color: canGoForward ? (isDark ? Colors.white : Colors.black87) : Colors.grey)),
-                    ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (!_isEditMode) _buildTtsButton(),
+                      TextButton.icon(
+                        onPressed: canGoForward ? () => _goToChapter(_currentChapterIndex + 1) : null,
+                        icon: Icon(Icons.chevron_right, color: canGoForward ? (isDark ? Colors.white : Colors.black87) : Colors.grey),
+                        label: Text('Next', style: TextStyle(color: canGoForward ? (isDark ? Colors.white : Colors.black87) : Colors.grey)),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -404,17 +432,141 @@ class _WriterScreenState extends State<WriterScreen> {
   }
 
   Widget _buildTtsButton() {
-    if (_isEditMode) return const SizedBox.shrink();
     return Consumer<TtsService>(
       builder: (context, tts, _) {
-        return GestureDetector(
-          onLongPress: () => _showTtsQuickSettings(context, tts),
-          child: IconButton(
-            icon: const Icon(Icons.volume_up),
-            onPressed: () => _speakCurrentChapter(tts),
-          ),
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_isEditMode)
+              IconButton(
+                icon: Icon(_isListening ? Icons.mic : Icons.mic_none, color: _isListening ? Colors.red : null),
+                onPressed: _toggleListening,
+              ),
+            if (!_isEditMode)
+              GestureDetector(
+                onLongPress: () => _showTtsQuickSettings(context, tts),
+                child: IconButton(
+                  icon: const Icon(Icons.volume_up),
+                  onPressed: () => _speakCurrentChapter(tts),
+                ),
+              ),
+          ],
         );
       },
+    );
+  }
+
+  void _toggleListening() async {
+    if (!_isListening) {
+      bool available = await _speech.initialize(
+        onStatus: (val) {
+          if (val == 'done' || val == 'notListening') {
+            setState(() => _isListening = false);
+          }
+        },
+        onError: (val) {
+          debugPrint('Speech error: $val');
+          setState(() => _isListening = false);
+        },
+      );
+      if (available) {
+        setState(() => _isListening = true);
+        _speech.listen(
+          onResult: (val) {
+            setState(() {
+              if (val.finalResult) {
+                final currentText = _contentController.text;
+                final selection = _contentController.selection;
+                String newText;
+                if (selection.start >= 0) {
+                  newText = currentText.replaceRange(selection.start, selection.end, val.recognizedWords);
+                } else {
+                  newText = currentText + (currentText.isEmpty ? "" : " ") + val.recognizedWords;
+                }
+                _contentController.text = newText;
+                _contentController.selection = TextSelection.collapsed(offset: selection.start + val.recognizedWords.length);
+                _updateWordCount();
+                _hasUnsavedChanges = true;
+              }
+            });
+          },
+        );
+      }
+    } else {
+      setState(() => _isListening = false);
+      _speech.stop();
+    }
+  }
+
+  void _showSettingsSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Consumer<ReaderSettings>(
+        builder: (context, settings, _) => Container(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Writing Settings', style: Theme.of(context).textTheme.titleLarge),
+                  IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+                ],
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  const Text('Font Size:'),
+                  const Spacer(),
+                  IconButton(icon: const Icon(Icons.remove), onPressed: settings.decreaseFontSize),
+                  Text('${settings.fontSize.toInt()}'),
+                  IconButton(icon: const Icon(Icons.add), onPressed: settings.increaseFontSize),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Text('Line Height:'),
+                  const Spacer(),
+                  SizedBox(
+                    width: 200,
+                    child: Slider(
+                      value: settings.lineHeight,
+                      min: 1.2,
+                      max: 2.0,
+                      divisions: 8,
+                      label: settings.lineHeight.toStringAsFixed(1),
+                      onChanged: settings.setLineHeight,
+                    ),
+                  ),
+                ],
+              ),
+              SwitchListTile(
+                title: const Text('Show Word Count'),
+                value: settings.showWordCount,
+                onChanged: settings.setShowWordCount,
+                contentPadding: EdgeInsets.zero,
+              ),
+              SwitchListTile(
+                title: const Text('Focus Mode'),
+                subtitle: const Text('Hides non-essential UI while writing'),
+                value: settings.focusMode,
+                onChanged: settings.setFocusMode,
+                contentPadding: EdgeInsets.zero,
+              ),
+              SwitchListTile(
+                title: const Text('Typewriter Scrolling'),
+                subtitle: const Text('Keep the cursor in the center of the screen'),
+                value: settings.typewriterScrolling,
+                onChanged: settings.setTypewriterScrolling,
+                contentPadding: EdgeInsets.zero,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -427,23 +579,247 @@ class _WriterScreenState extends State<WriterScreen> {
     }
   }
 
+  double _downloadProgress = 0;
+  bool _isLoadingVoice = false;
+  String _downloadStatus = '';
+
   void _showTtsQuickSettings(BuildContext context, TtsService tts) async {
+    final prefs = await SharedPreferences.getInstance();
+    final List<PiperVoice> downloadedVoices = [];
+    
+    for (var voice in tts.availableVoices) {
+      final modelPath = prefs.getString(voice.modelPrefKey);
+      if (modelPath != null && File(modelPath).existsSync()) {
+        downloadedVoices.add(voice);
+      }
+    }
+
+    if (!mounted) return;
+
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) => Container(
           padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('TTS Settings', style: Theme.of(context).textTheme.titleLarge), IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context))]),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('TTS Quick Settings', style: Theme.of(context).textTheme.titleLarge),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
               const SizedBox(height: 16),
-              Text('Speech Rate', style: TextStyle(fontWeight: FontWeight.bold)),
-              Slider(value: tts.speechRate, min: 0.1, max: 4.0, divisions: 39, label: '${tts.speechRate.toStringAsFixed(2)}x', onChanged: (val) { tts.setSpeechRate(val); setModalState(() {}); }),
+              const Text('Speech Rate', style: TextStyle(fontWeight: FontWeight.bold)),
+              Slider(
+                value: tts.speechRate,
+                min: 0.1,
+                max: 4.0,
+                divisions: 39,
+                label: '${tts.speechRate.toStringAsFixed(2)}x',
+                onChanged: (val) {
+                  tts.setSpeechRate(val);
+                  setModalState(() {});
+                },
+              ),
+              const Text('Pitch', style: TextStyle(fontWeight: FontWeight.bold)),
+              Slider(
+                value: tts.pitch,
+                min: 0.1,
+                max: 4.0,
+                divisions: 39,
+                label: tts.pitch.toStringAsFixed(2),
+                onChanged: (val) {
+                  tts.setPitch(val);
+                  setModalState(() {});
+                },
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                title: const Text('Voice Typing (Dictation)', style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text('Speak to add text to your story'),
+                trailing: Icon(_isListening ? Icons.mic : Icons.mic_none, color: _isListening ? Colors.red : null),
+                onTap: () {
+                  Navigator.pop(context);
+                  _toggleListening();
+                },
+              ),
+              const Divider(),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Voice Selection', style: TextStyle(fontWeight: FontWeight.bold)),
+                  TextButton(
+                    onPressed: () => _showVoiceSelector(context, tts),
+                    child: const Text('All Voices'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              if (downloadedVoices.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8.0),
+                  child: Text('No other voices downloaded', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                )
+              else
+                SizedBox(
+                  height: 150,
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: downloadedVoices.length,
+                    itemBuilder: (context, index) {
+                      final voice = downloadedVoices[index];
+                      final isSelected = tts.selectedCustomVoice?.key == voice.key;
+                      return ListTile(
+                        title: Text(voice.name),
+                        subtitle: Text(voice.key, style: const TextStyle(fontSize: 10)),
+                        trailing: isSelected ? const Icon(Icons.check_circle, color: Colors.green) : null,
+                        dense: true,
+                        onTap: () {
+                          tts.setCustomVoice(voice);
+                          Navigator.pop(context);
+                        },
+                      );
+                    },
+                  ),
+                ),
+              if (tts.selectedCustomVoice != null) ...[
+                const SizedBox(height: 16),
+                _buildDownloadSection(context, tts, setModalState),
+              ],
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildDownloadSection(BuildContext context, TtsService tts, StateSetter setModalState) {
+    final voice = tts.selectedCustomVoice!;
+    return FutureBuilder<bool>(
+      future: _isVoiceDownloaded(voice),
+      builder: (context, snapshot) {
+        final isDownloaded = snapshot.data ?? false;
+        if (isDownloaded) return const SizedBox.shrink();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Divider(),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Download Selected Voice'),
+              subtitle: _isLoadingVoice
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 8),
+                        LinearProgressIndicator(value: _downloadProgress),
+                        const SizedBox(height: 4),
+                        Text(_downloadStatus, style: const TextStyle(fontSize: 12)),
+                      ],
+                    )
+                  : Text('Download ${voice.name} model to use it.'),
+              trailing: _isLoadingVoice
+                  ? null
+                  : ElevatedButton.icon(
+                      onPressed: () => _downloadVoiceModel(context, tts, setModalState),
+                      icon: const Icon(Icons.download),
+                      label: const Text('Download'),
+                    ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<bool> _isVoiceDownloaded(PiperVoice voice) async {
+    final prefs = await SharedPreferences.getInstance();
+    final modelPath = prefs.getString(voice.modelPrefKey);
+    final configPath = prefs.getString(voice.configPrefKey);
+    return modelPath != null && File(modelPath).existsSync() &&
+           configPath != null && File(configPath).existsSync();
+  }
+
+  Future<void> _downloadVoiceModel(BuildContext context, TtsService tts, StateSetter setModalState) async {
+    setModalState(() {
+      _isLoadingVoice = true;
+      _downloadProgress = 0;
+      _downloadStatus = 'Starting download...';
+    });
+
+    try {
+      if (tts.selectedCustomVoice != null) {
+        await tts.downloadCustomVoice(tts.selectedCustomVoice!, (progress) {
+          setModalState(() {
+            _downloadProgress = progress;
+            _downloadStatus = 'Downloading: ${(progress * 100).toStringAsFixed(0)}%';
+          });
+        });
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${tts.selectedCustomVoice?.name ?? 'Voice'} downloaded successfully!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Download failed: $e')),
+        );
+      }
+    } finally {
+      setModalState(() {
+        _isLoadingVoice = false;
+        _downloadStatus = '';
+      });
+    }
+  }
+
+  void _showVoiceSelector(BuildContext context, TtsService tts) async {
+    final prefs = await SharedPreferences.getInstance();
+    Map<String, bool> downloadedStatus = {};
+    for (var voice in tts.availableVoices) {
+      final modelPath = prefs.getString(voice.modelPrefKey);
+      downloadedStatus[voice.key] = modelPath != null && File(modelPath).existsSync();
+    }
+
+    if (!mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => VoiceSelectionModal(
+        tts: tts,
+        selectedVoicePack: tts.selectedVoice,
+        selectedCustomVoice: tts.selectedCustomVoice,
+        downloadedVoices: downloadedStatus,
+        onVoiceSelected: (voicePack, customVoice) {
+          if (customVoice != null) {
+            tts.setCustomVoice(customVoice);
+          } else if (voicePack != null) {
+            tts.setVoice(voicePack);
+          }
+        },
+        onVoiceDelete: (key) async {
+          final voice = tts.availableVoices.where((v) => v.key == key).firstOrNull;
+          if (voice != null) {
+            await tts.deleteCustomVoice(voice);
+          }
+        },
       ),
     );
   }
@@ -513,14 +889,14 @@ class _WriterScreenState extends State<WriterScreen> {
       _chapters.add(ChapterData(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         title: 'Chapter $chapterNumber',
-        content: '<p>Start writing...</p>',
+        content: '',
         order: chapterNumber,
       ));
       _service.saveChapters(widget.project.epubPath!, _chapters);
     }
     setState(() {
       _currentChapterIndex = _chapters.length - 1;
-      _contentController.text = _stripHtml(_chapters[_currentChapterIndex].content);
+      _contentController.text = '';
       _isEditMode = true;
       _hasUnsavedChanges = true;
     });
@@ -541,8 +917,10 @@ class _WriterScreenState extends State<WriterScreen> {
               if (controller.text.isNotEmpty && widget.project.epubPath != null) {
                 _chapters[index] = ChapterData(id: _chapters[index].id, title: controller.text, content: _chapters[index].content, order: _chapters[index].order);
                 await _service.saveChapters(widget.project.epubPath!, _chapters);
-                setState(() => _hasUnsavedChanges = true);
-                Navigator.pop(ctx);
+                if (mounted) {
+                  setState(() => _hasUnsavedChanges = true);
+                  Navigator.pop(ctx);
+                }
               }
             },
             child: const Text('Save'),

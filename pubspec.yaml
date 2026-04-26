@@ -19,12 +19,14 @@ dependencies:
 
   # TTS with Piper plugin
   piper_tts_plugin: ^0.0.2
+  speech_to_text: ^7.0.0
   just_audio: ^0.9.40
   audio_service: ^0.18.0
   just_audio_background: ^0.0.1-beta.13
 
   # File handling
   path_provider: ^2.1.4
+  path: ^1.9.0
   permission_handler: ^11.3.1
   file_picker: ^8.1.2
   archive: ^4.0.9

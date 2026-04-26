@@ -1,53 +1,10 @@
-import 'dart:io';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
-import '../models/bookmark_type.dart';
-
-class EpisodeProject {
-  final String id;
-  final String title;
-  final String? epubPath;
-  final String? coverPath;
-  final DateTime createdAt;
-  final DateTime updatedAt;
-  final List<BookmarkType> bookmarks;
-
-  EpisodeProject({
-    required this.id,
-    required this.title,
-    this.epubPath,
-    this.coverPath,
-    required this.createdAt,
-    required this.updatedAt,
-    this.bookmarks = const [BookmarkType.all],
-  });
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'title': title,
-    'epubPath': epubPath,
-    'coverPath': coverPath,
-    'createdAt': createdAt.toIso8601String(),
-    'updatedAt': updatedAt.toIso8601String(),
-    'bookmarks': bookmarks.map((b) => b.name).toList(),
-  };
-
-  factory EpisodeProject.fromJson(Map<String, dynamic> json) => EpisodeProject(
-    id: json['id'],
-    title: json['title'],
-    epubPath: json['epubPath'],
-    coverPath: json['coverPath'],
-    createdAt: DateTime.parse(json['createdAt']),
-    updatedAt: DateTime.parse(json['updatedAt']),
-    bookmarks: (json['bookmarks'] as List?)?.map((b) => BookmarkType.values.firstWhere(
-      (e) => e.name == b,
-      orElse: () => BookmarkType.all,
-    )).toList() ?? [BookmarkType.all],
-  );
-}
+import '../models/episode_project.dart';
 
 class ChapterData {
   final String id;
@@ -72,30 +29,25 @@ class ChapterData {
   factory ChapterData.fromJson(Map<String, dynamic> json) => ChapterData(
     id: json['id'],
     title: json['title'],
-    content: json['content'] ?? '',
-    order: json['order'] ?? 0,
+    content: json['content'],
+    order: json['order'],
   );
 }
 
 class EpubProjectService {
-  String _getEpubName(String title, String id) {
-    final sanitized = title.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
-    return '$sanitized-$id.epub';
-  }
+  static final EpubProjectService _instance = EpubProjectService._internal();
+  factory EpubProjectService() => _instance;
+  EpubProjectService._internal();
 
-  String _getJsonName(String title, String id) {
-    final sanitized = title.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
-    return '$sanitized-$id.json';
-  }
+  String _getJsonName(String id) => 'project-$id.json';
 
   Future<String> createEmptyEpub(String title, String id, String folderPath) async {
-    final epubFileName = _getEpubName(title, id);
-    final epubPath = '$folderPath/$epubFileName';
-    
+    final epubPath = '$folderPath/$title-$id.epub';
     final archive = Archive();
     
-    // mimetype (must be first, uncompressed)
-    archive.addFile(ArchiveFile('mimetype', 20, Uint8List.fromList('application/epub+zip'.codeUnits)));
+    // mimetype
+    final mimetype = 'application/epub+zip';
+    archive.addFile(ArchiveFile('mimetype', mimetype.length, Uint8List.fromList(mimetype.codeUnits)));
     
     // META-INF/container.xml
     final containerXml = '<?xml version="1.0" encoding="UTF-8"?>\n<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">\n  <rootfiles>\n    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>\n  </rootfiles>\n</container>';
@@ -132,8 +84,6 @@ class EpubProjectService {
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head><title>Chapter 1</title></head>
 <body>
-<h1>Chapter 1</h1>
-<p>Start writing your story here...</p>
 </body>
 </html>''';
     archive.addFile(ArchiveFile('OEBPS/chapter1.xhtml', chapter1.length, Uint8List.fromList(chapter1.codeUnits)));
@@ -143,9 +93,7 @@ class EpubProjectService {
     archive.addFile(ArchiveFile('OEBPS/cover.jpg', coverJpg.length, Uint8List.fromList(coverJpg)));
     
     final encoded = ZipEncoder().encode(archive);
-    if (encoded == null) {
-      throw Exception('Failed to create EPUB');
-    }
+    if (encoded == null) throw Exception('Failed to encode EPUB');
     
     final file = File(epubPath);
     await file.writeAsBytes(encoded);
@@ -155,7 +103,7 @@ class EpubProjectService {
 
   Future<EpisodeProject?> importEpub(String epubPath, String folderPath) async {
     final file = File(epubPath);
-    if (!await file.existsSync()) return null;
+    if (!file.existsSync()) return null;
 
     try {
       final bytes = await file.readAsBytes();
@@ -164,42 +112,133 @@ class EpubProjectService {
       String title = 'Imported';
       String? coverPath;
       final List<ChapterData> chapters = [];
+      final id = DateTime.now().millisecondsSinceEpoch.toString();
       
-      for (final af in archive.files) {
-        if (af.name == 'OEBPS/content.opf') {
-          final opfContent = String.fromCharCodes(af.content);
-          final titleMatch = RegExp(r'<dc:title>([^<]+)</dc:title>').firstMatch(opfContent);
+      // 1. Find the OPF file path from container.xml
+      String? opfPath;
+      try {
+        final containerFile = archive.findFile('META-INF/container.xml');
+        if (containerFile != null) {
+          final containerContent = utf8.decode(containerFile.content);
+          final match = RegExp(r'full-path\s*=\s*["' "'" r']([^"' "'" r']+)["' "'" r']').firstMatch(containerContent);
+          opfPath = match?.group(1);
+        }
+      } catch (_) {}
+      
+      // Fallback: search for any .opf file
+      opfPath ??= archive.files.where((f) => f.name.endsWith('.opf')).firstOrNull?.name;
+      
+      if (opfPath != null) {
+        final opfFile = archive.findFile(opfPath);
+        if (opfFile != null) {
+          final opfContent = utf8.decode(opfFile.content);
+          final opfDir = p.dirname(opfPath);
+          
+          // Get Title
+          final titleMatch = RegExp(r'<dc:title[^>]*>([^<]+)</dc:title>', caseSensitive: false).firstMatch(opfContent);
           if (titleMatch != null) {
             title = titleMatch.group(1) ?? 'Imported';
           }
-        }
-        
-        if (af.name.startsWith('OEBPS/chapter') && af.name.endsWith('.xhtml')) {
-          final htmlContent = String.fromCharCodes(af.content);
-          final titleMatch = RegExp(r'<title>([^<]+)</title>').firstMatch(htmlContent);
-          final title = titleMatch?.group(1) ?? 'Untitled';
           
-          final bodyMatch = RegExp(r'<body>([\s\S]*)</body>', dotAll: true).firstMatch(htmlContent);
-          final body = bodyMatch?.group(1) ?? '';
+          // Get Cover Image
+          String? coverId;
+          final coverMetaMatch = RegExp(r'<meta[^>]+name\s*=\s*["' "'" r']cover["' "'" r'][^>]+content\s*=\s*["' "'" r']([^"' "'" r']+)["' "'" r']', caseSensitive: false).firstMatch(opfContent);
+          coverId = coverMetaMatch?.group(1);
           
-          final orderMatch = RegExp(r'chapter(\d+)\.xhtml').firstMatch(af.name);
-          final order = int.tryParse(orderMatch?.group(1) ?? '0') ?? 0;
-          chapters.add(ChapterData(
-            id: order.toString(),
-            title: title,
-            content: body,
-            order: order,
-          ));
+          String? coverHref;
+          if (coverId != null) {
+            final itemMatch = RegExp('<item[^>]+id\\s*=\\s*["' "'" r']' + coverId + r'["' "'" r']' + r'[^>]+href\\s*=\\s*["' "'" r']([^"' "'" r']+)["' "'" r']', caseSensitive: false).firstMatch(opfContent);
+            coverHref = itemMatch?.group(1);
+          }
+          
+          // Fallback: look for items with "cover" in ID or href
+          if (coverHref == null) {
+            final coverItemMatch = RegExp(r'<item[^>]+(?:id|href)\s*=\s*["' "'" r'][^"' "'" r']*cover[^"' "'" r']*["' "'" r'][^>]+href\s*=\s*["' "'" r']([^"' "'" r']+)["' "'" r']', caseSensitive: false).firstMatch(opfContent);
+            coverHref = coverItemMatch?.group(1);
+          }
+          
+          if (coverHref != null) {
+            final fullCoverPath = p.normalize(opfDir == '.' ? coverHref : '$opfDir/$coverHref').replaceAll('\\', '/');
+            final coverFile = archive.findFile(fullCoverPath);
+            if (coverFile != null) {
+              final coversDir = Directory('$folderPath/covers');
+              if (!coversDir.existsSync()) coversDir.createSync(recursive: true);
+              
+              final ext = p.extension(fullCoverPath).isEmpty ? '.jpg' : p.extension(fullCoverPath);
+              final coverFilePath = '${coversDir.path}/$id$ext';
+              await File(coverFilePath).writeAsBytes(coverFile.content);
+              coverPath = coverFilePath;
+            }
+          }
+          
+          // Get Chapters from Spine
+          final manifestItems = <String, String>{}; // id -> href
+          final itemRegex = RegExp(r'<item\s+([^>]+)/?>', caseSensitive: false);
+          final idRegex = RegExp(r'id\s*=\s*["' "'" r']([^"' "'" r']+)["' "'" r']', caseSensitive: false);
+          final hrefRegex = RegExp(r'href\s*=\s*["' "'" r']([^"' "'" r']+)["' "'" r']', caseSensitive: false);
+          
+          for (final m in itemRegex.allMatches(opfContent)) {
+            final attrs = m.group(1)!;
+            final itemId = idRegex.firstMatch(attrs)?.group(1);
+            final itemHref = hrefRegex.firstMatch(attrs)?.group(1);
+            if (itemId != null && itemHref != null) {
+              manifestItems[itemId] = itemHref;
+            }
+          }
+          
+          final spineMatches = RegExp(r'<itemref[^>]+idref\s*=\s*["' "'" r']([^"' "'" r']+)["' "'" r']', caseSensitive: false).allMatches(opfContent);
+          int order = 1;
+          for (final m in spineMatches) {
+            final idref = m.group(1);
+            final href = manifestItems[idref];
+            if (href != null) {
+              final fullHref = p.normalize(opfDir == '.' ? href : '$opfDir/$href').replaceAll('\\', '/');
+              final chapterFile = archive.findFile(fullHref);
+              if (chapterFile != null) {
+                final htmlContent = utf8.decode(chapterFile.content);
+                
+                final chTitleMatch = RegExp(r'<title[^>]*>([^<]+)</title>', caseSensitive: false).firstMatch(htmlContent);
+                final chTitle = chTitleMatch?.group(1) ?? 'Chapter $order';
+                
+                final bodyMatch = RegExp(r'<body[^>]*>([\s\S]*)</body>', dotAll: true, caseSensitive: false).firstMatch(htmlContent);
+                var body = bodyMatch?.group(1) ?? htmlContent;
+                
+                // Basic cleanup of body content
+                body = body.trim();
+                
+                chapters.add(ChapterData(
+                  id: order.toString(),
+                  title: chTitle,
+                  content: body,
+                  order: order,
+                ));
+                order++;
+              }
+            }
+          }
         }
-        
-        if (af.name.toLowerCase().contains('cover') && (af.name.endsWith('.jpg') || af.name.endsWith('.jpeg') || af.name.endsWith('.png'))) {
-          coverPath = af.name;
+      }
+
+      // If no chapters found via OPF, fallback to old method
+      if (chapters.isEmpty) {
+        for (final af in archive.files) {
+          if (af.name.endsWith('.xhtml') || af.name.endsWith('.html')) {
+             if (af.name.contains('toc') || af.name.contains('cover')) {
+               continue;
+             }
+             final htmlContent = utf8.decode(af.content);
+             final bodyMatch = RegExp(r'<body[^>]*>([\s\S]*)</body>', dotAll: true, caseSensitive: false).firstMatch(htmlContent);
+             final body = bodyMatch?.group(1) ?? htmlContent;
+             chapters.add(ChapterData(
+               id: chapters.length.toString(),
+               title: 'Chapter ${chapters.length + 1}',
+               content: body,
+               order: chapters.length + 1,
+             ));
+          }
         }
       }
       
-      chapters.sort((a, b) => a.order.compareTo(b.order));
-      
-      final id = DateTime.now().millisecondsSinceEpoch.toString();
       final newTitle = '$title (Copy)';
       final newEpubPath = await createEmptyEpub(newTitle, id, folderPath);
       
@@ -215,8 +254,7 @@ class EpubProjectService {
         'bookmarks': [BookmarkType.all.name],
       };
       
-      final jsonFileName = _getJsonName(newTitle, id);
-      final jsonPath = '$folderPath/$jsonFileName';
+      final jsonPath = '$folderPath/${_getJsonName(id)}';
       await File(jsonPath).writeAsString(jsonEncode(projectJson));
       
       return EpisodeProject.fromJson(projectJson);
@@ -243,8 +281,7 @@ class EpubProjectService {
       'bookmarks': [BookmarkType.all.name],
     };
     
-    final jsonFileName = _getJsonName(newTitle, newId);
-    final jsonPath = '$folderPath/$jsonFileName';
+    final jsonPath = '$folderPath/${_getJsonName(newId)}';
     await File(jsonPath).writeAsString(jsonEncode(projectJson));
     
     return EpisodeProject.fromJson(projectJson);
@@ -252,35 +289,84 @@ class EpubProjectService {
 
   Future<List<ChapterData>> getChapters(String epubPath) async {
     final file = File(epubPath);
-    if (!await file.existsSync()) return [];
+    if (!file.existsSync()) return [];
 
     try {
       final bytes = await file.readAsBytes();
       final archive = ZipDecoder().decodeBytes(bytes);
       
-      final List<ChapterData> chapters = [];
+      String? opfPath;
+      try {
+        final containerFile = archive.findFile('META-INF/container.xml');
+        if (containerFile != null) {
+          final containerContent = utf8.decode(containerFile.content);
+          final match = RegExp(r'full-path\s*=\s*["' "'" r']([^"' "'" r']+)["' "'" r']').firstMatch(containerContent);
+          opfPath = match?.group(1);
+        }
+      } catch (_) {}
       
-      for (final af in archive.files) {
-        if (af.name.startsWith('OEBPS/chapter') && af.name.endsWith('.xhtml')) {
-          final htmlContent = String.fromCharCodes(af.content);
-          final titleMatch = RegExp(r'<title>([^<]+)</title>').firstMatch(htmlContent);
-          final title = titleMatch?.group(1) ?? 'Untitled';
+      opfPath ??= archive.files.where((f) => f.name.endsWith('.opf')).firstOrNull?.name;
+      
+      if (opfPath != null) {
+        final opfFile = archive.findFile(opfPath);
+        if (opfFile != null) {
+          final opfContent = utf8.decode(opfFile.content);
+          final opfDir = p.dirname(opfPath);
           
-          final bodyMatch = RegExp(r'<body>([\s\S]*)</body>', dotAll: true).firstMatch(htmlContent);
-          final body = bodyMatch?.group(1) ?? '';
+          final manifestItems = <String, String>{};
+          final itemRegex = RegExp(r'<item\s+([^>]+)/?>', caseSensitive: false);
+          final idRegex = RegExp(r'id\s*=\s*["' "'" r']([^"' "'" r']+)["' "'" r']', caseSensitive: false);
+          final hrefRegex = RegExp(r'href\s*=\s*["' "'" r']([^"' "'" r']+)["' "'" r']', caseSensitive: false);
           
-          final orderMatch = RegExp(r'chapter(\d+)\.xhtml').firstMatch(af.name);
-          final order = int.tryParse(orderMatch?.group(1) ?? '0') ?? chapters.length + 1;
+          for (final m in itemRegex.allMatches(opfContent)) {
+            final attrs = m.group(1)!;
+            final itemId = idRegex.firstMatch(attrs)?.group(1);
+            final itemHref = hrefRegex.firstMatch(attrs)?.group(1);
+            if (itemId != null && itemHref != null) {
+              manifestItems[itemId] = itemHref;
+            }
+          }
           
-          chapters.add(ChapterData(
-            id: order.toString(),
-            title: title,
-            content: body,
-            order: order,
-          ));
+          final spineMatches = RegExp(r'<itemref[^>]+idref\s*=\s*["' "'" r']([^"' "'" r']+)["' "'" r']', caseSensitive: false).allMatches(opfContent);
+          final chapters = <ChapterData>[];
+          int order = 1;
+          for (final m in spineMatches) {
+            final idref = m.group(1);
+            final href = manifestItems[idref];
+            if (href != null) {
+              final fullHref = p.normalize(opfDir == '.' ? href : '$opfDir/$href').replaceAll('\\', '/');
+              final chapterFile = archive.findFile(fullHref);
+              if (chapterFile != null) {
+                final htmlContent = utf8.decode(chapterFile.content);
+                final chTitleMatch = RegExp(r'<title[^>]*>([^<]+)</title>', caseSensitive: false).firstMatch(htmlContent);
+                final chTitle = chTitleMatch?.group(1) ?? 'Chapter $order';
+                final bodyMatch = RegExp(r'<body[^>]*>([\s\S]*)</body>', dotAll: true, caseSensitive: false).firstMatch(htmlContent);
+                final body = bodyMatch?.group(1) ?? htmlContent;
+                
+                chapters.add(ChapterData(id: order.toString(), title: chTitle, content: body, order: order));
+                order++;
+              }
+            }
+          }
+          if (chapters.isNotEmpty) return chapters;
         }
       }
-      
+
+      // Fallback
+      final List<ChapterData> chapters = [];
+      for (final af in archive.files) {
+        if (af.name.contains('chapter') && (af.name.endsWith('.xhtml') || af.name.endsWith('.html'))) {
+          final htmlContent = utf8.decode(af.content);
+          final titleMatch = RegExp(r'<title[^>]*>([^<]+)</title>', caseSensitive: false).firstMatch(htmlContent);
+          final title = titleMatch?.group(1) ?? 'Untitled';
+          final bodyMatch = RegExp(r'<body[^>]*>([\s\S]*)</body>', dotAll: true, caseSensitive: false).firstMatch(htmlContent);
+          final body = bodyMatch?.group(1) ?? htmlContent;
+          final orderMatch = RegExp(r'chapter(\d+)').firstMatch(af.name);
+          final order = int.tryParse(orderMatch?.group(1) ?? '0') ?? chapters.length + 1;
+          
+          chapters.add(ChapterData(id: order.toString(), title: title, content: body, order: order));
+        }
+      }
       chapters.sort((a, b) => a.order.compareTo(b.order));
       return chapters;
     } catch (e) {
@@ -293,9 +379,9 @@ class EpubProjectService {
     await updateEpub(epubPath, chapters);
   }
 
-  Future<void> updateEpub(String epubPath, List<ChapterData> chapters) async {
+  Future<void> updateEpub(String epubPath, List<ChapterData> chapters, {String? title}) async {
     final file = File(epubPath);
-    if (!await file.existsSync()) return;
+    if (!file.existsSync()) return;
 
     try {
       final bytes = await file.readAsBytes();
@@ -303,7 +389,18 @@ class EpubProjectService {
       
       final newArchive = Archive();
       
-      // Add mimetype first
+      String currentTitle = title ?? 'EPUB';
+      if (title == null) {
+        for (final af in archive.files) {
+          if (af.name.endsWith('content.opf')) {
+            final opfContent = utf8.decode(af.content);
+            final match = RegExp(r'<dc:title[^>]*>([^<]+)</dc:title>', caseSensitive: false).firstMatch(opfContent);
+            if (match != null) currentTitle = match.group(1)!;
+            break;
+          }
+        }
+      }
+
       for (final af in archive.files) {
         if (af.name == 'mimetype') {
           newArchive.addFile(af);
@@ -311,95 +408,91 @@ class EpubProjectService {
         }
       }
       
-      // Add META-INF
       for (final af in archive.files) {
         if (af.name.startsWith('META-INF/')) {
           newArchive.addFile(af);
         }
       }
       
-      // Build manifest items
       final manifestItems = <String>[];
       final spineItems = <String>[];
       
       manifestItems.add('<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>');
-      manifestItems.add('<item id="cover-image" href="cover.jpg" media-type="image/jpeg"/>');
+      
+      String coverHref = 'cover.jpg';
+      String coverMediaType = 'image/jpeg';
+      
+      for (final af in archive.files) {
+        if (af.name.startsWith('OEBPS/cover.')) {
+          coverHref = af.name.replaceFirst('OEBPS/', '');
+          if (coverHref.endsWith('.png')) coverMediaType = 'image/png';
+          else if (coverHref.endsWith('.gif')) coverMediaType = 'image/gif';
+          break;
+        }
+      }
+      manifestItems.add('<item id="cover-image" href="$coverHref" media-type="$coverMediaType"/>');
       
       for (int i = 0; i < chapters.length; i++) {
-        final ch = chapters[i];
         final fileName = 'chapter${i + 1}.xhtml';
         manifestItems.add('<item id="chapter${i + 1}" href="$fileName" media-type="application/xhtml+xml"/>');
         spineItems.add('<itemref idref="chapter${i + 1}"/>');
       }
       
-      // Build toc.ncx
       final navPoints = StringBuffer();
       for (int i = 0; i < chapters.length; i++) {
-        navPoints.write('''<navPoint id="navPoint-${i + 1}" playOrder="${i + 1}">
-      <navLabel><text>${chapters[i].title}</text></navLabel>
-      <content src="chapter${i + 1}.xhtml"/>
-    </navPoint>\n''');
+        navPoints.write('<navPoint id="navPoint-${i + 1}" playOrder="${i + 1}">');
+        navPoints.write('<navLabel><text>${chapters[i].title.replaceAll('&', '&amp;')}</text></navLabel>');
+        navPoints.write('<content src="chapter${i + 1}.xhtml"/>');
+        navPoints.write('</navPoint>');
       }
-      
-      final tocNcx = '''<?xml version="1.0" encoding="UTF-8"?php?>
-<!DOCTYPE ncx PUBLIC "-//NISO//DTD ncx 2005-1//EN" "http://www.daisy.org/z3986/2005/ncx-2005-1.dtd">
-<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
-  <head>
-    <meta name="dtb:uid" content="urn:uuid:${DateTime.now().millisecondsSinceEpoch}"/>
-    <meta name="dtb:depth" content="1"/>
-    <meta name="dtb:totalPageCount" content="0"/>
-    <meta name="dtb:maxPageNumber" content="0"/>
-  </head>
-  <docTitle>
-    <text>EPUB</text>
-  </docTitle>
-  <navMap>
-${navPoints.toString()}  </navMap>
-</ncx>''';
+
+      final tocNcx = '<?xml version="1.0" encoding="UTF-8"?>'
+          '<!DOCTYPE ncx PUBLIC "-//NISO//DTD ncx 2005-1//EN" "http://www.daisy.org/z3986/2005/ncx-2005-1.dtd">'
+          '<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">'
+          '<head>'
+          '<meta name="dtb:uid" content="urn:uuid:${DateTime.now().millisecondsSinceEpoch}"/>'
+          '<meta name="dtb:depth" content="1"/>'
+          '<meta name="dtb:totalPageCount" content="0"/>'
+          '<meta name="dtb:maxPageNumber" content="0"/>'
+          '</head>'
+          '<docTitle><text>$currentTitle</text></docTitle>'
+          '<navMap>$navPoints</navMap>'
+          '</ncx>';
       newArchive.addFile(ArchiveFile('OEBPS/toc.ncx', tocNcx.length, Uint8List.fromList(tocNcx.codeUnits)));
-      
-      // Build content.opf
-      final contentOpf = '''<?xml version="1.0" encoding="UTF-8"?>
-<package version="2.0" xmlns="http://www.idpf.org/2007/opf" unique-identifier="bookid">
-  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
-    <dc:title>EPUB</dc:title>
-    <dc:creator>Anonymous</dc:creator>
-    <dc:language>en</dc:language>
-    <dc:identifier id="bookid" opf:scheme="UUID">urn:uuid:${DateTime.now().millisecondsSinceEpoch}</dc:identifier>
-    <meta name="cover" content="cover-image"/>
-  </metadata>
-  <manifest>
-    ${manifestItems.join('\n    ')}
-  </manifest>
-  <spine toc="ncx">
-    ${spineItems.join('\n    ')}
-  </spine>
-</package>''';
+
+      final contentOpf = '<?xml version="1.0" encoding="UTF-8"?>'
+          '<package version="2.0" xmlns="http://www.idpf.org/2007/opf" unique-identifier="bookid">'
+          '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">'
+          '<dc:title>$currentTitle</dc:title>'
+          '<dc:language>en</dc:language>'
+          '<dc:identifier id="bookid" opf:scheme="UUID">urn:uuid:${DateTime.now().millisecondsSinceEpoch}</dc:identifier>'
+          '<meta name="cover" content="cover-image"/>'
+          '</metadata>'
+          '<manifest>${manifestItems.join("\n")}</manifest>'
+          '<spine toc="ncx">${spineItems.join("\n")}</spine>'
+          '</package>';
       newArchive.addFile(ArchiveFile('OEBPS/content.opf', contentOpf.length, Uint8List.fromList(contentOpf.codeUnits)));
-      
-      // Add cover
+
+      for (int i = 0; i < chapters.length; i++) {
+        final content = chapters[i].content;
+        final xhtml = '<?xml version="1.0" encoding="UTF-8"?>'
+            '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">'
+            '<html xmlns="http://www.w3.org/1999/xhtml">'
+            '<head><title>${chapters[i].title}</title></head>'
+            '<body>$content</body>'
+            '</html>';
+        newArchive.addFile(ArchiveFile('OEBPS/chapter${i + 1}.xhtml', xhtml.length, Uint8List.fromList(xhtml.codeUnits)));
+      }
+
       for (final af in archive.files) {
-        if (af.name == 'OEBPS/cover.jpg') {
+        if (af.name.startsWith('OEBPS/') && 
+            !af.name.endsWith('.opf') && 
+            !af.name.endsWith('.ncx') && 
+            !af.name.contains('chapter')) {
           newArchive.addFile(af);
-          break;
         }
       }
-      
-      // Add chapters
-      for (int i = 0; i < chapters.length; i++) {
-        final ch = chapters[i];
-        final chapterHtml = '''<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml">
-<head><title>${ch.title}</title></head>
-<body>
-<h1>${ch.title}</h1>
-${ch.content}
-</body>
-</html>''';
-        newArchive.addFile(ArchiveFile('OEBPS/chapter${i + 1}.xhtml', chapterHtml.length, Uint8List.fromList(chapterHtml.codeUnits)));
-      }
-      
+
       final encoded = ZipEncoder().encode(newArchive);
       if (encoded != null) {
         await file.writeAsBytes(encoded);
@@ -409,52 +502,77 @@ ${ch.content}
     }
   }
 
-  Future<String?> setCover(String epubPath, Uint8List imageBytes, String extension) async {
+  Future<void> setCover(String epubPath, File imageFile) async {
     final file = File(epubPath);
-    if (!await file.existsSync()) return null;
+    if (!file.existsSync()) return;
 
     try {
       final bytes = await file.readAsBytes();
       final archive = ZipDecoder().decodeBytes(bytes);
-      
       final newArchive = Archive();
-      final coverName = 'OEBPS/cover.$extension';
+      
+      final ext = p.extension(imageFile.path).toLowerCase();
+      final coverName = 'cover$ext';
       
       for (final af in archive.files) {
-        if (!af.name.toLowerCase().contains('cover')) {
-          newArchive.addFile(af);
-        }
+        if (af.name == 'mimetype') newArchive.addFile(af);
       }
       
-      newArchive.addFile(ArchiveFile(coverName, imageBytes.length, imageBytes));
-      
+      for (final af in archive.files) {
+        if (af.name.startsWith('META-INF/')) newArchive.addFile(af);
+      }
+
+      final imageBytes = await imageFile.readAsBytes();
+      newArchive.addFile(ArchiveFile('OEBPS/$coverName', imageBytes.length, imageBytes));
+
+      for (final af in archive.files) {
+        if (af.name.startsWith('OEBPS/') && !af.name.contains('cover.')) {
+          if (af.name.endsWith('content.opf')) {
+            var opfContent = utf8.decode(af.content);
+            final mediaType = ext == '.png' ? 'image/png' : 'image/jpeg';
+            
+            if (opfContent.contains('id="cover-image"')) {
+               opfContent = opfContent.replaceAll(
+                 RegExp(r'<item id="cover-image" href="[^"]+" media-type="[^"]+"/>'),
+                 '<item id="cover-image" href="$coverName" media-type="$mediaType"/>'
+               );
+            } else {
+               opfContent = opfContent.replaceFirst(
+                 '<manifest>',
+                 '<manifest>\n    <item id="cover-image" href="$coverName" media-type="$mediaType"/>'
+               );
+            }
+            newArchive.addFile(ArchiveFile(af.name, opfContent.length, Uint8List.fromList(opfContent.codeUnits)));
+          } else {
+            newArchive.addFile(af);
+          }
+        }
+      }
+
       final encoded = ZipEncoder().encode(newArchive);
       if (encoded != null) {
         await file.writeAsBytes(encoded);
-        return coverName;
       }
     } catch (e) {
       debugPrint('Error setting cover: $e');
     }
-    return null;
   }
 
   Future<void> removeCover(String epubPath) async {
     final file = File(epubPath);
-    if (!await file.existsSync()) return;
+    if (!file.existsSync()) return;
 
     try {
       final bytes = await file.readAsBytes();
       final archive = ZipDecoder().decodeBytes(bytes);
-      
       final newArchive = Archive();
-      
+
       for (final af in archive.files) {
-        if (!af.name.toLowerCase().contains('cover')) {
+        if (!af.name.contains('cover.')) {
           newArchive.addFile(af);
         }
       }
-      
+
       final encoded = ZipEncoder().encode(newArchive);
       if (encoded != null) {
         await file.writeAsBytes(encoded);
@@ -462,9 +580,5 @@ ${ch.content}
     } catch (e) {
       debugPrint('Error removing cover: $e');
     }
-  }
-
-  Future<String?> pickCoverImage() async {
-    return null;
   }
 }

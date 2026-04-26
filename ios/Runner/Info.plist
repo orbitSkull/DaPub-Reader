@@ -57,6 +57,10 @@
 	<array>
 		<string>audio</string>
 	</array>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>LUMING needs access to speech recognition for voice typing in the writer mode.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>LUMING needs access to the microphone for voice typing in the writer mode.</string>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

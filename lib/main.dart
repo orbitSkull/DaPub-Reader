@@ -577,6 +577,8 @@ class _HomeScreenState extends State<HomeScreen> {
         return 'Dropped';
       case BookmarkType.favourite:
         return 'Favourite';
+      case BookmarkType.custom:
+        return 'Custom';
     }
   }
 
@@ -592,6 +594,8 @@ class _HomeScreenState extends State<HomeScreen> {
         return Colors.red;
       case BookmarkType.favourite:
         return Colors.amber;
+      case BookmarkType.custom:
+        return Colors.purple;
     }
   }
 
@@ -1067,6 +1071,8 @@ class _BookOptionsSheet extends StatelessWidget {
         return 'Dropped';
       case BookmarkType.favourite:
         return 'Favourite';
+      case BookmarkType.custom:
+        return 'Custom';
     }
   }
 

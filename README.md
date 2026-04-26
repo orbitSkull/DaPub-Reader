@@ -13,9 +13,9 @@ LUMING is a modern, high-performance Flutter application designed for an immersi
 - [x] **Background Playback**: Full notification and lock-screen controls for hands-free reading.
 - [x] **Custom Bookmarks**: Create unlimited custom labels for organizing books.
 - [ ] **LUMING Translation**: Real-time sentence and chapter translation (Coming Soon).
-- [ ] **LUMING Writer**: Distraction-free EPUB creation and publishing tools (Coming Soon).
-- [ ] **IDEABOX**: Categorized scratchpad for quick-capture fragments, Quick search through all ideas, Tag system for organization (Coming Soon).
-- [ ] **LUMING Stats**: Word count tracking (total and per session), Daily/weekly writing goals with notifications
+- [x] **LUMING Writer**: Distraction-free EPUB creation and publishing tools.
+- [x] **IDEABOX**: Categorized scratchpad for quick-capture fragments, Quick search through all ideas, Tag system for organization.
+- [x] **LUMING Stats**: Word count tracking (total and per session), Daily/weekly writing goals with notifications.
 - [x] **Official Release**: Stable v1.0.0 builds for Android.
 
 ## 🚀 Key Features
@@ -26,17 +26,18 @@ LUMING is a modern, high-performance Flutter application designed for an immersi
 - **Customizable Experience**: Tailor your reading with dark mode support, adjustable speech rates, and voice selection.
 - **Privacy First**: No internet required for reading or TTS synthesis.
 
-## ✍️ Writer Mode Features (Coming Soon)
+## ✍️ Writer Mode Features
 
-LUMING is evolving into a dual-mode app with a dedicated Writer mode for content creators:
+LUMING is now a dual-mode app with a dedicated Writer mode for content creators:
 
 ### Creative Writing Tools
-- **Voice Typing**: Dictation for hands-free writing
-- **Writing Prompts**: Random prompts to overcome writer's block
-- **Focus Mode**: Distraction-free fullscreen writing
-- **Scene Templates**: Pre-built templates for common plot structures
-- **Location Tags**: Tag scenes by location (fantasy, sci-fi, etc.)
-- **Export to EPUB**: Export your finished manuscript as a readable EPUB
+- [x] **Voice Typing**: Dictation for hands-free writing (Powered by Speech-to-Text).
+- [x] **Focus Mode**: Distraction-free fullscreen writing that hides non-essential UI.
+- [x] **Advanced TTS Support**: Ported the Reader's powerful voice selection and downloading directly to the writer footer.
+- [x] **EPUB Management**: Create new chapters, rename, delete, and reorder within a robust EPUB structure.
+- [x] **Word Count Tracking**: Real-time stats to monitor your progress.
+- [x] **Typewriter Scrolling**: Keeps your active line centered for ergonomic writing.
+- [x] **Export/Save**: Automatic preservation of your work in standards-compliant EPUB format.
 
 ## 🛠️ Built With
 

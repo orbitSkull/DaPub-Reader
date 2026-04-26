@@ -288,7 +288,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const ListTile(
             title: Text('Developer'),
-            subtitle: Text('DaPub Reader Team'),
+            subtitle: Text('LUMING Team'),
           ),
         ]),
         const SizedBox(height: 20),
