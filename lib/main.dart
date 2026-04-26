@@ -19,7 +19,6 @@ enum BookmarkType {
   inProgress,
   dropped,
   favourite,
-  custom,
   yourCreation,
 }
 
@@ -580,8 +579,6 @@ class _HomeScreenState extends State<HomeScreen> {
         return 'Dropped';
       case BookmarkType.favourite:
         return 'Favourite';
-      case BookmarkType.custom:
-        return 'Custom';
       case BookmarkType.yourCreation:
         return 'Your Creations';
     }
@@ -599,8 +596,6 @@ class _HomeScreenState extends State<HomeScreen> {
         return Colors.red;
       case BookmarkType.favourite:
         return Colors.amber;
-      case BookmarkType.custom:
-        return Colors.purple;
       case BookmarkType.yourCreation:
         return Colors.teal;
     }
@@ -1096,8 +1091,6 @@ class _BookOptionsSheet extends StatelessWidget {
         return 'Dropped';
       case BookmarkType.favourite:
         return 'Favourite';
-      case BookmarkType.custom:
-        return 'Custom';
       case BookmarkType.yourCreation:
         return 'Your Creations';
     }
