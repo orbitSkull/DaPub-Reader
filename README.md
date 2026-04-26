@@ -47,22 +47,6 @@ LUMING is now a dual-mode app with a dedicated Writer mode for content creators:
 - **Provider**: Efficient state management.
 - **just_audio**: High-performance audio playback.
 
-## 🔮 Roadmap & Upcoming Features
-
-We are constantly working to make LUMING the ultimate reading companion. Upcoming major features include:
-
-### 🌍 Translation Integration
-Break language barriers with built-in translation.
-- **On-the-fly Translation**: Translate sentences or entire chapters while reading.
-- **Dual-Language Mode**: View original and translated text side-by-side.
-- **Offline Translation Support**: Keeping your reading private and accessible anywhere.
-
-### ✍️ Pub Writer
-Empowering creators to build their own stories.
-- **EPUB Creation**: Tools to write, format, and export your own EPUB files directly from the app.
-- **Rich Text Editor**: A distraction-free environment for writers.
-- **Metadata Management**: Easily add covers, author info, and table of contents to your publications.
-
 ## 📦 Installation
 
 LUMING currently targets the Android platform.
