@@ -147,50 +147,38 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
       String? coverPath;
 
-      // 1. Try to get the standard cover image from metadata
-      if (book.coverImage != null) {
+      // Try to get the standard cover image from metadata
+      if (book.coverImage != null && book.coverImage!.isNotEmpty) {
         try {
-          // coverImage is already Uint8List, save directly
+          debugPrint('Found cover from metadata, size: ${book.coverImage!.length}');
           coverPath = await _saveCoverImage(book.coverImage!, 'cover_metadata.jpg');
         } catch (e) {
           debugPrint('Error saving metadata cover: $e');
         }
       }
 
-      // 2. If no cover found yet, search through all images in the book
+      // Search through all images in the book - look for ANY jpg/png/jpeg
       if (coverPath == null && book.content?.images != null && book.content!.images.isNotEmpty) {
-        final List<String> validExts = ['.jpg', '.jpeg', '.png'];
+        debugPrint('Searching for cover image in ${book.content!.images.length} images');
         
-        // Filter and collect all valid images
-        final validImages = book.content!.images.entries.where((entry) {
+        final List<String> validExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+        
+        // Get all valid image entries - just take FIRST valid image found
+        for (final entry in book.content!.images.entries) {
           final ext = entry.key.toLowerCase();
-          return validExts.any((e) => ext.endsWith(e)) && entry.value.content != null;
-        }).toList();
-
-        if (validImages.isNotEmpty) {
-          // Priority 1: Files with 'cover' in the name
-          var candidates = validImages.where((e) => e.key.toLowerCase().contains('cover')).toList();
-          
-          // Priority 2: Files with 'front' or 'logo' or 'item_1'
-          if (candidates.isEmpty) {
-            candidates = validImages.where((e) {
-              final k = e.key.toLowerCase();
-              return k.contains('front') || k.contains('logo') || k.contains('item_1');
-            }).toList();
+          if (validExts.any((e) => ext.endsWith(e)) && entry.value.content != null && entry.value.content!.isNotEmpty) {
+            debugPrint('Found image: ${entry.key}, size: ${entry.value.content!.length}');
+            try {
+              coverPath = await _saveCoverImage(entry.value.content!, entry.key);
+              break;
+            } catch (e) {
+              debugPrint('Error saving image ${entry.key}: $e');
+            }
           }
-
-          // Priority 3: Just use the largest images (often covers are higher resolution)
-          if (candidates.isEmpty) {
-            candidates = List.from(validImages);
-          }
-          
-          // Sort candidates by size descending to get the most likely "best" image
-          candidates.sort((a, b) => b.value.content!.length.compareTo(a.value.content!.length));
-          
-          final bestEntry = candidates.first;
-          coverPath = await _saveCoverImage(bestEntry.value.content!, bestEntry.key);
         }
       }
+      
+      debugPrint('Cover path result: $coverPath');
 
       final chapters = _extractChapters(book);
 
