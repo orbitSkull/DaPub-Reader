@@ -189,10 +189,6 @@ class _WriterScreenState extends State<WriterScreen> {
               },
             ),
             IconButton(
-              icon: Icon(Icons.visibility),
-              onPressed: () => _showSettingsSheet(context),
-            ),
-            IconButton(
               icon: Icon(_showWordCount ? Icons.abc : Icons.abc_outlined),
               onPressed: () => setState(() => _showWordCount = !_showWordCount),
             ),
@@ -429,113 +425,6 @@ class _WriterScreenState extends State<WriterScreen> {
         tts.speak(content);
       }
     }
-  }
-
-  void _showSettingsSheet(BuildContext context) {
-    final tts = Provider.of<TtsService>(context, listen: false);
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => Consumer<ReaderSettings>(
-        builder: (context, settings, _) => Container(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Writing Settings', style: Theme.of(context).textTheme.titleLarge),
-                  IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
-                ],
-              ),
-              const SizedBox(height: 16),
-              SwitchListTile(
-                title: const Text('Typewriter Scrolling'),
-                subtitle: const Text('Keep current line centered'),
-                value: _typewriterScrolling,
-                onChanged: (val) => setState(() => _typewriterScrolling = val),
-                contentPadding: EdgeInsets.zero,
-              ),
-              SwitchListTile(
-                title: const Text('Show Word Count'),
-                value: _showWordCount,
-                onChanged: (val) => setState(() => _showWordCount = val),
-                contentPadding: EdgeInsets.zero,
-              ),
-              SwitchListTile(
-                title: const Text('Focus Mode'),
-                subtitle: const Text('Hide status bar and UI'),
-                value: _focusMode,
-                onChanged: (val) => setState(() { _focusMode = val; _showUI = !val; }),
-                contentPadding: EdgeInsets.zero,
-              ),
-              const Divider(height: 32),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Font Size', style: Theme.of(context).textTheme.titleMedium),
-                  Row(children: [IconButton(icon: const Icon(Icons.remove), onPressed: settings.decreaseFontSize), Text('${settings.fontSize.toInt()}'), IconButton(icon: const Icon(Icons.add), onPressed: settings.increaseFontSize)]),
-                ],
-              ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Line Height'),
-                  SizedBox(width: 200, child: Slider(value: settings.lineHeight, min: 1.2, max: 2.0, divisions: 8, label: settings.lineHeight.toStringAsFixed(1), onChanged: settings.setLineHeight)),
-                ],
-              ),
-              SwitchListTile(title: const Text('Dark Mode'), value: settings.darkMode, onChanged: (_) => settings.toggleDarkMode(), contentPadding: EdgeInsets.zero),
-              const SizedBox(height: 16),
-              const Text('Font Family:'), const SizedBox(height: 8),
-              Wrap(spacing: 8, children: [
-                ChoiceChip(label: const Text('Serif'), selected: settings.fontFamily == 'Serif', onSelected: (_) => settings.setFontFamily('Serif')),
-                ChoiceChip(label: const Text('Sans'), selected: settings.fontFamily == 'Sans', onSelected: (_) => settings.setFontFamily('Sans')),
-                ChoiceChip(label: const Text('Mono'), selected: settings.fontFamily == 'Mono', onSelected: (_) => settings.setFontFamily('Mono')),
-              ]),
-              const Divider(height: 32),
-              Text('TTS Settings', style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Speech Rate'),
-                  SizedBox(width: 200, child: Slider(value: tts.speechRate, min: 0.1, max: 4.0, divisions: 39, label: '${tts.speechRate.toStringAsFixed(2)}x', onChanged: tts.setSpeechRate)),
-                ],
-              ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Voice Pitch'),
-                  SizedBox(width: 200, child: Slider(value: tts.pitch, min: 0.5, max: 2.0, divisions: 15, label: tts.pitch.toStringAsFixed(1), onChanged: tts.setPitch)),
-                ],
-              ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Pause at Period (ms)'),
-                  SizedBox(width: 200, child: Slider(value: tts.sentencePause.toDouble(), min: 0, max: 2000, divisions: 20, label: '${tts.sentencePause}ms', onChanged: (val) => tts.setSentencePause(val.toInt()))),
-                ],
-              ),
-              SwitchListTile(
-                title: const Text('Highlight Spoken Word'),
-                value: tts.highlightSpokenWord,
-                onChanged: (val) => tts.setHighlightSpokenWord(val),
-                contentPadding: EdgeInsets.zero,
-              ),
-              SwitchListTile(
-                title: const Text('Continuous Play'),
-                value: tts.continuousPlay,
-                onChanged: (val) => tts.setContinuousPlay(val),
-                contentPadding: EdgeInsets.zero,
-              ),
-              const SizedBox(height: 16),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
   void _showTtsQuickSettings(BuildContext context, TtsService tts) async {
