@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'writer_screen.dart';
 import '../services/epub_project_service.dart';
 import '../models/bookmark_type.dart';
+import '../models/episode_project.dart';
 
 class WriterProjectsScreen extends StatefulWidget {
   const WriterProjectsScreen({super.key});
@@ -351,6 +352,7 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
                   epubPath: epubPath,
                   createdAt: now,
                   updatedAt: now,
+                  bookmarks: [BookmarkType.all],
                 );
                 
                 await _saveProject(project);

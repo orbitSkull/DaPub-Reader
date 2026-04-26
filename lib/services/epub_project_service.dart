@@ -2,9 +2,11 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:archive/archive.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import '../models/episode_project.dart';
+import '../models/bookmark_type.dart';
 
 class ChapterData {
   final String id;
@@ -502,7 +504,7 @@ class EpubProjectService {
     }
   }
 
-  Future<void> setCover(String epubPath, File imageFile) async {
+  Future<void> setCover(String epubPath, Uint8List imageBytes, String ext) async {
     final file = File(epubPath);
     if (!file.existsSync()) return;
 
@@ -511,8 +513,7 @@ class EpubProjectService {
       final archive = ZipDecoder().decodeBytes(bytes);
       final newArchive = Archive();
       
-      final ext = p.extension(imageFile.path).toLowerCase();
-      final coverName = 'cover$ext';
+      final coverName = 'cover.$ext';
       
       for (final af in archive.files) {
         if (af.name == 'mimetype') newArchive.addFile(af);
@@ -522,14 +523,13 @@ class EpubProjectService {
         if (af.name.startsWith('META-INF/')) newArchive.addFile(af);
       }
 
-      final imageBytes = await imageFile.readAsBytes();
       newArchive.addFile(ArchiveFile('OEBPS/$coverName', imageBytes.length, imageBytes));
 
       for (final af in archive.files) {
         if (af.name.startsWith('OEBPS/') && !af.name.contains('cover.')) {
           if (af.name.endsWith('content.opf')) {
             var opfContent = utf8.decode(af.content);
-            final mediaType = ext == '.png' ? 'image/png' : 'image/jpeg';
+            final mediaType = (ext == 'png') ? 'image/png' : 'image/jpeg';
             
             if (opfContent.contains('id="cover-image"')) {
                opfContent = opfContent.replaceAll(
@@ -555,6 +555,19 @@ class EpubProjectService {
       }
     } catch (e) {
       debugPrint('Error setting cover: $e');
+    }
+  }
+
+  Future<String?> pickCoverImage() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+      );
+      return result?.files.single.path;
+    } catch (e) {
+      debugPrint('Error picking cover image: $e');
+      return null;
     }
   }
 

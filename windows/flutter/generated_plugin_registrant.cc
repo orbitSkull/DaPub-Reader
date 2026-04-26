@@ -8,10 +8,13 @@
 
 #include <permission_handler_windows/permission_handler_windows_plugin.h>
 #include <piper_phonemizer_windows_plugin/piper_phonemizer_windows_plugin_c_api.h>
+#include <speech_to_text_windows/speech_to_text_windows.h>
 
 void RegisterPlugins(flutter::PluginRegistry* registry) {
   PermissionHandlerWindowsPluginRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("PermissionHandlerWindowsPlugin"));
   PiperPhonemizerWindowsPluginCApiRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("PiperPhonemizerWindowsPluginCApi"));
+  SpeechToTextWindowsRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("SpeechToTextWindows"));
 }

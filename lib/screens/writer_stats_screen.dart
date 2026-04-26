@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../services/epub_project_service.dart';
 import '../models/bookmark_type.dart';
+import '../models/episode_project.dart';
 import 'writer_epub_stats_screen.dart';
 
 class WriterStatsScreen extends StatefulWidget {
