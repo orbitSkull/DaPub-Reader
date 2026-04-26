@@ -4,5 +4,4 @@ enum BookmarkType {
   inProgress,
   dropped,
   favourite,
-  yourCreation,
 }

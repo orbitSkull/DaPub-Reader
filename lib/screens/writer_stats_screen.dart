@@ -131,8 +131,6 @@ class _WriterStatsScreenState extends State<WriterStatsScreen> {
         return 'Dropped';
       case BookmarkType.favourite:
         return 'Favourite';
-      case BookmarkType.yourCreation:
-        return 'Own';
     }
   }
 
@@ -148,8 +146,6 @@ class _WriterStatsScreenState extends State<WriterStatsScreen> {
         return Colors.red;
       case BookmarkType.favourite:
         return Colors.amber;
-      case BookmarkType.yourCreation:
-        return Colors.purple;
     }
   }
 

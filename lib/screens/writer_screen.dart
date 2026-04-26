@@ -48,13 +48,28 @@ class _WriterScreenState extends State<WriterScreen> {
     }
     _currentChapterIndex = widget.startChapter;
     if (_chapters.isNotEmpty && _currentChapterIndex < _chapters.length) {
-      _contentController.text = _chapters[_currentChapterIndex].content;
+      _contentController.text = _stripHtml(_chapters[_currentChapterIndex].content);
     }
     _updateWordCount();
     setState(() {
       _isLoading = false;
       _isEditMode = _chapters.isEmpty;
     });
+  }
+
+  String _stripHtml(String html) {
+    String content = html.replaceAll(RegExp(r'<(script|style)[^>]*>.*?</\1>', dotAll: true), '');
+    content = content.replaceAll(RegExp(r'<(br|p|div|li|h[1-6])[^>]*>', caseSensitive: false), '\n');
+    content = content.replaceAll(RegExp(r'<[^>]*>'), ' ');
+    content = content
+        .replaceAll('&nbsp;', ' ')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'");
+    content = content.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return content;
   }
 
   void _updateWordCount() {
@@ -121,7 +136,7 @@ class _WriterScreenState extends State<WriterScreen> {
       }
       setState(() {
         _currentChapterIndex = index;
-        _contentController.text = _chapters[index].content;
+        _contentController.text = _stripHtml(_chapters[index].content);
       });
       _scrollController.jumpTo(0);
     }
@@ -610,7 +625,7 @@ class _WriterScreenState extends State<WriterScreen> {
     }
     setState(() {
       _currentChapterIndex = _chapters.length - 1;
-      _contentController.text = _chapters[_currentChapterIndex].content;
+      _contentController.text = _stripHtml(_chapters[_currentChapterIndex].content);
       _isEditMode = true;
       _hasUnsavedChanges = true;
     });
@@ -662,7 +677,7 @@ class _WriterScreenState extends State<WriterScreen> {
                   _currentChapterIndex = _chapters.length - 1;
                 }
                 if (_chapters.isNotEmpty) {
-                  _contentController.text = _chapters[_currentChapterIndex].content;
+                  _contentController.text = _stripHtml(_chapters[_currentChapterIndex].content);
                 }
                 _hasUnsavedChanges = true;
               });

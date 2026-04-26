@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'package:just_audio_background/just_audio_background.dart';
+import 'models/bookmark_type.dart';
 import 'screens/reader_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/stats_screen.dart';
@@ -18,17 +19,6 @@ import 'screens/writer_projects_screen.dart';
 import 'providers/reader_settings.dart';
 import 'services/tts_service.dart';
 import 'services/writer_service.dart';
-
-export 'models/bookmark_type.dart';
-
-enum BookmarkType {
-  all,
-  completed,
-  inProgress,
-  dropped,
-  favourite,
-  yourCreation,
-}
 
 class BookEntry {
   final String filePath;
@@ -587,8 +577,6 @@ class _HomeScreenState extends State<HomeScreen> {
         return 'Dropped';
       case BookmarkType.favourite:
         return 'Favourite';
-      case BookmarkType.yourCreation:
-        return 'Your Creations';
     }
   }
 
@@ -604,8 +592,6 @@ class _HomeScreenState extends State<HomeScreen> {
         return Colors.red;
       case BookmarkType.favourite:
         return Colors.amber;
-      case BookmarkType.yourCreation:
-        return Colors.teal;
     }
   }
 
@@ -1081,8 +1067,6 @@ class _BookOptionsSheet extends StatelessWidget {
         return 'Dropped';
       case BookmarkType.favourite:
         return 'Favourite';
-      case BookmarkType.yourCreation:
-        return 'Your Creations';
     }
   }
 
