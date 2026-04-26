@@ -20,6 +20,7 @@ enum BookmarkType {
   dropped,
   favourite,
   custom,
+  yourCreation,
 }
 
 class BookEntry {
@@ -30,6 +31,7 @@ class BookEntry {
   final DateTime addedAt;
   final int lastChapter;
   final int totalChapters;
+  final List<String> customLabels;
 
   BookEntry({
     required this.filePath,
@@ -39,6 +41,7 @@ class BookEntry {
     required this.addedAt,
     this.lastChapter = 0,
     this.totalChapters = 1,
+    this.customLabels = const [],
   });
 
   Map<String, dynamic> toJson() => {
@@ -49,6 +52,7 @@ class BookEntry {
         'addedAt': addedAt.toIso8601String(),
         'lastChapter': lastChapter,
         'totalChapters': totalChapters,
+        'customLabels': customLabels,
       };
 
   factory BookEntry.fromJson(Map<String, dynamic> json) => BookEntry(
@@ -61,6 +65,7 @@ class BookEntry {
         addedAt: DateTime.parse(json['addedAt']),
         lastChapter: json['lastChapter'] ?? 0,
         totalChapters: json['totalChapters'] ?? 1,
+        customLabels: (json['customLabels'] as List?)?.cast<String>() ?? [],
       );
 
   String get fileName => filePath.split('/').last;
@@ -135,6 +140,8 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   List<BookEntry> _books = [];
+  List<BookmarkType> _globalBookmarks = [];
+  List<String> _globalCustomLabels = [];
   Set<BookmarkType> _selectedFilters = {};
   String _sortBy = 'date';
   bool _isLoading = false;
@@ -146,6 +153,46 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _loadSettings();
     _loadBooks();
+    _loadGlobalBookmarks();
+    _loadGlobalCustomLabels();
+  }
+
+  Future<void> _loadGlobalCustomLabels() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      setState(() {
+        _globalCustomLabels = prefs.getStringList('globalCustomLabels') ?? [];
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _saveGlobalCustomLabels() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('globalCustomLabels', _globalCustomLabels);
+  }
+
+  Future<void> _loadGlobalBookmarks() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final data = prefs.getStringList('globalBookmarks') ?? [];
+      setState(() {
+        _globalBookmarks = data
+            .map((name) {
+              try {
+                return BookmarkType.values.firstWhere((b) => b.name == name);
+              } catch (_) {
+                return null;
+              }
+            })
+            .whereType<BookmarkType>()
+            .toList();
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _saveGlobalBookmarks() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('globalBookmarks', _globalBookmarks.map((b) => b.name).toList());
   }
 
   Future<void> _loadSettings() async {
@@ -298,9 +345,13 @@ class _HomeScreenState extends State<HomeScreen> {
   void _showBookOptions(BookEntry book) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       builder: (context) => _BookOptionsSheet(
         book: book,
+        globalCustomLabels: _globalCustomLabels,
         onBookmarkToggle: (type) => _toggleBookmark(book, type),
+        onCustomLabelAdd: (name) => _addCustomLabel(book, name),
+        onCustomLabelRemove: (name) => _removeCustomLabel(book, name),
         onOpen: () {
           Navigator.pop(context);
           _openBook(book);
@@ -311,6 +362,56 @@ class _HomeScreenState extends State<HomeScreen> {
         },
       ),
     );
+  }
+
+  void _addCustomLabel(BookEntry book, String name) {
+    setState(() {
+      if (!_globalCustomLabels.contains(name)) {
+        _globalCustomLabels.add(name);
+        _saveGlobalCustomLabels();
+      }
+      final idx = _books.indexWhere((b) => b.filePath == book.filePath);
+      if (idx != -1) {
+        final bookEntry = _books[idx];
+        final customLabels = List<String>.from(bookEntry.customLabels);
+        if (!customLabels.contains(name)) {
+          customLabels.add(name);
+        }
+        _books[idx] = BookEntry(
+          filePath: bookEntry.filePath,
+          title: bookEntry.title,
+          coverPath: bookEntry.coverPath,
+          bookmarks: bookEntry.bookmarks,
+          addedAt: bookEntry.addedAt,
+          lastChapter: bookEntry.lastChapter,
+          totalChapters: bookEntry.totalChapters,
+          customLabels: customLabels,
+        );
+        _saveBooks();
+      }
+    });
+  }
+
+  void _removeCustomLabel(BookEntry book, String name) {
+    setState(() {
+      final idx = _books.indexWhere((b) => b.filePath == book.filePath);
+      if (idx != -1) {
+        final bookEntry = _books[idx];
+        final customLabels = List<String>.from(bookEntry.customLabels);
+        customLabels.remove(name);
+        _books[idx] = BookEntry(
+          filePath: bookEntry.filePath,
+          title: bookEntry.title,
+          coverPath: bookEntry.coverPath,
+          bookmarks: bookEntry.bookmarks,
+          addedAt: bookEntry.addedAt,
+          lastChapter: bookEntry.lastChapter,
+          totalChapters: bookEntry.totalChapters,
+          customLabels: customLabels,
+        );
+        _saveBooks();
+      }
+    });
   }
 
   void _toggleBookmark(BookEntry book, BookmarkType type) {
@@ -344,6 +445,8 @@ class _HomeScreenState extends State<HomeScreen> {
           bookmarks: bookmarks,
           addedAt: bookEntry.addedAt,
           lastChapter: bookEntry.lastChapter,
+          totalChapters: bookEntry.totalChapters,
+          customLabels: bookEntry.customLabels,
         );
         _saveBooks();
       }
@@ -478,6 +581,8 @@ class _HomeScreenState extends State<HomeScreen> {
         return 'Favourite';
       case BookmarkType.custom:
         return 'Custom';
+      case BookmarkType.yourCreation:
+        return 'Your Creations';
     }
   }
 
@@ -495,6 +600,8 @@ class _HomeScreenState extends State<HomeScreen> {
         return Colors.amber;
       case BookmarkType.custom:
         return Colors.purple;
+      case BookmarkType.yourCreation:
+        return Colors.teal;
     }
   }
 
@@ -856,13 +963,19 @@ class _HomeScreenState extends State<HomeScreen> {
 
 class _BookOptionsSheet extends StatelessWidget {
   final BookEntry book;
+  final List<String> globalCustomLabels;
   final Function(BookmarkType) onBookmarkToggle;
+  final Function(String) onCustomLabelAdd;
+  final Function(String) onCustomLabelRemove;
   final VoidCallback onOpen;
   final VoidCallback onDelete;
 
   const _BookOptionsSheet({
     required this.book,
+    required this.globalCustomLabels,
     required this.onBookmarkToggle,
+    required this.onCustomLabelAdd,
+    required this.onCustomLabelRemove,
     required this.onOpen,
     required this.onDelete,
   });
@@ -881,6 +994,8 @@ class _BookOptionsSheet extends StatelessWidget {
         return 'Favourite';
       case BookmarkType.custom:
         return 'Custom';
+      case BookmarkType.yourCreation:
+        return 'Your Creations';
     }
   }
 
@@ -919,6 +1034,27 @@ class _BookOptionsSheet extends StatelessWidget {
             }).toList(),
           ),
           const SizedBox(height: 16),
+          const Text('Custom Labels:', style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ...book.customLabels.map((label) => Chip(
+                    label: Text(label),
+                    backgroundColor: Colors.purple.withOpacity(0.2),
+                    deleteIcon: const Icon(Icons.close, size: 16),
+                    onDeleted: () => onCustomLabelRemove(label),
+                  )),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ActionChip(
+            avatar: const Icon(Icons.add, size: 16),
+            label: const Text('Add Label'),
+            onPressed: () => _showAddLabelDialog(context),
+          ),
+          const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
@@ -938,6 +1074,40 @@ class _BookOptionsSheet extends StatelessWidget {
                 style: TextStyle(color: Colors.red),
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddLabelDialog(BuildContext ctx) {
+    final controller = TextEditingController();
+    showDialog(
+      context: ctx,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('Add Custom Label'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'Enter label name',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              final name = controller.text.trim();
+              if (name.isNotEmpty) {
+                onCustomLabelAdd(name);
+                Navigator.pop(dialogCtx);
+              }
+            },
+            child: const Text('Add'),
           ),
         ],
       ),

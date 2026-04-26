@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/apk/res/tools"
+    xmlns:tools="http://schemas.android.com/apk/res-auto"
     package="com.orbitskull.luming">
     <!-- Permissions for file access and storage -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />

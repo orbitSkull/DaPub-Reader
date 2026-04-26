@@ -9,6 +9,7 @@ LUMING is a modern, high-performance Flutter application designed for an immersi
 - [x] **LUMING Pub Reader**: High-fidelity EPUB parsing and immersive reading.
 - [x] **Advanced Piper TTS**: Neural offline text-to-speech with support for **120+ high-quality models**.
 - [x] **Background Playback**: Full notification and lock-screen controls for hands-free reading.
+- [x] **Custom Bookmarks**: Create unlimited custom labels for organizing books.
 - [ ] **LUMING Translation**: Real-time sentence and chapter translation (Coming Soon).
 - [ ] **LUMING Writer**: Distraction-free EPUB creation and publishing tools (Coming Soon).
 - [ ] **Official Release**: Stable v1.0.0 builds for Android.
@@ -20,6 +21,52 @@ LUMING is a modern, high-performance Flutter application designed for an immersi
 - **Dynamic Library Management**: Easily import, filter, and organize your digital library with support for bookmarks and reading status.
 - **Customizable Experience**: Tailor your reading with dark mode support, adjustable speech rates, and voice selection.
 - **Privacy First**: No internet required for reading or TTS synthesis.
+
+## ✍️ Writer Mode Features (Coming Soon)
+
+LUMING is evolving into a dual-mode app with a dedicated Writer mode for content creators:
+
+### 0: Projects 📁
+- File-manager for manuscripts organized by Chapters/Scenes
+- Drag-and-drop chapter reordering
+- Character tracking per story
+- POV (Point of View) tracking per chapter
+- Timeline view for story events
+- Auto-versioning and revision history
+
+### 1: IdeaBox 💡
+- Categorized scratchpad for quick-capture fragments
+- Voice-to-text notes for hands-free capturing
+- Tag system for organization
+- Quick search through all ideas
+
+### 2: Writer Stats 📊
+- Word count tracking (total and per session)
+- Daily writing streaks
+- Velocity metrics (words per hour)
+- Session timer
+- Daily/weekly writing goals with notifications
+
+### 3: Reader Portal 📚
+- Quick bridge back to Reader Library
+- "Your Creations" collection for published works
+- One-tap export to EPUB
+
+### 4: Studio Settings ⚙️
+- Typewriter Mode (distraction-free fullscreen)
+- Focus mode with customizable themes
+- EPUB export presets
+- Custom dictionaries
+- Auto-save intervals
+- Writing prompts generator
+
+### Creative Writing Tools
+- **Voice Typing**: Dictation for hands-free writing
+- **Writing Prompts**: Random prompts to overcome writer's block
+- **Focus Mode**: Distraction-free fullscreen writing
+- **Scene Templates**: Pre-built templates for common plot structures
+- **Location Tags**: Tag scenes by location (fantasy, sci-fi, etc.)
+- **Export to EPUB**: Export your finished manuscript as a readable EPUB
 
 ## 🛠️ Built With
 

@@ -299,6 +299,67 @@ class TtsService extends ChangeNotifier {
     }
   }
 
+  Future<void> deleteCustomVoice(PiperVoice voice) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final modelPath = prefs.getString(voice.modelPrefKey);
+      final configPath = prefs.getString(voice.configPrefKey);
+      
+      if (modelPath != null) {
+        final modelFile = File(modelPath);
+        if (await modelFile.exists()) {
+          await modelFile.delete();
+        }
+      }
+      if (configPath != null) {
+        final configFile = File(configPath);
+        if (await configFile.exists()) {
+          await configFile.delete();
+        }
+      }
+      
+      await prefs.remove(voice.modelPrefKey);
+      await prefs.remove(voice.configPrefKey);
+      
+      if (_selectedCustomVoice?.key == voice.key) {
+        _selectedCustomVoice = null;
+        await prefs.remove('selectedCustomVoiceKey');
+      }
+      
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error deleting voice: $e');
+    }
+  }
+
+  Future<void> deleteVoice(PiperVoicePack pack) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final modelPath = prefs.getString(pack.modelPrefKey);
+      final jsonPath = prefs.getString(pack.jsonPrefKey);
+      
+      if (modelPath != null) {
+        final modelFile = File(modelPath);
+        if (await modelFile.exists()) {
+          await modelFile.delete();
+        }
+      }
+      if (jsonPath != null) {
+        final jsonFile = File(jsonPath);
+        if (await jsonFile.exists()) {
+          await jsonFile.delete();
+        }
+      }
+      
+      await prefs.remove(pack.modelPrefKey);
+      await prefs.remove(pack.jsonPrefKey);
+      
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error deleting voice: $e');
+    }
+  }
+
   Future<void> downloadVoice(PiperVoicePack pack, Function(double) onProgress) async {
     try {
       final prefs = await SharedPreferences.getInstance();

@@ -216,10 +216,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ),
                     )
                   else if (isDownloaded)
-                    const ListTile(
-                      title: Text('Voice Status'),
-                      subtitle: Text('Downloaded and ready to use'),
-                      trailing: Icon(Icons.check_circle, color: Colors.green),
+                    ListTile(
+                      title: const Text('Voice Status'),
+                      subtitle: const Text('Downloaded'),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline, color: Colors.red),
+                            onPressed: () => _showDeleteFromSettings(voiceKey),
+                          ),
+                        ],
+                      ),
                     ),
                 ],
               );
@@ -385,6 +393,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _saveSettings();
           _checkDownloadedVoices();
         },
+        onVoiceDelete: (key) async {
+          final voice = tts.availableVoices.where((v) => v.key == key).firstOrNull;
+          if (voice != null) {
+            await tts.deleteCustomVoice(voice);
+          }
+          _checkDownloadedVoices();
+          if (mounted) Navigator.pop(context);
+        },
+      ),
+    );
+  }
+
+  void _showDeleteFromSettings(String voiceKey) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Voice Model'),
+        content: const Text('Delete voice file to free storage?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final tts = Provider.of<TtsService>(context, listen: false);
+              final voice = tts.availableVoices.where((v) => v.key == voiceKey).firstOrNull;
+              if (voice != null) {
+                await tts.deleteCustomVoice(voice);
+              }
+              _checkDownloadedVoices();
+            },
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
       ),
     );
   }
@@ -395,7 +439,8 @@ class VoiceSelectionModal extends StatefulWidget {
   final PiperVoicePack selectedVoicePack;
   final PiperVoice? selectedCustomVoice;
   final Map<String, bool> downloadedVoices;
-  final Function(PiperVoicePack?, PiperVoice?) onVoiceSelected;
+  final Function(PiperVoicePack?, PiperVoice?)? onVoiceSelected;
+  final Function(String)? onVoiceDelete;
 
   const VoiceSelectionModal({
     super.key,
@@ -403,7 +448,8 @@ class VoiceSelectionModal extends StatefulWidget {
     required this.selectedVoicePack,
     this.selectedCustomVoice,
     required this.downloadedVoices,
-    required this.onVoiceSelected,
+    this.onVoiceSelected,
+    this.onVoiceDelete,
   });
 
   @override
@@ -488,11 +534,20 @@ class _VoiceSelectionModalState extends State<VoiceSelectionModal> {
                           isDownloaded ? Icons.check_circle : Icons.download_for_offline,
                           color: isDownloaded ? Colors.green : Colors.grey,
                         ),
-                        trailing: isSelected
-                            ? Icon(Icons.radio_button_checked, color: Theme.of(context).colorScheme.primary)
+                        trailing: isDownloaded
+                            ? Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                                    onPressed: () => widget.onVoiceDelete?.call(voice.key),
+                                  ),
+                                  Icon(Icons.radio_button_off),
+                                ],
+                              )
                             : const Icon(Icons.radio_button_off),
                         onTap: () {
-                          widget.onVoiceSelected(null, voice);
+                          widget.onVoiceSelected?.call(null, voice);
                           Navigator.pop(context);
                         },
                       );

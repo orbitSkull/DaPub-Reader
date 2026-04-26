@@ -16,11 +16,15 @@ import 'package:archive/archive.dart';
 class ReaderScreen extends StatefulWidget {
   final String filePath;
   final int startChapter;
+  final bool isTts;
+  final int startChunk;
 
   const ReaderScreen({
     super.key,
     required this.filePath,
     this.startChapter = 0,
+    this.isTts = false,
+    this.startChunk = 0,
   });
 
   @override
@@ -112,6 +116,13 @@ class _ReaderScreenState extends State<ReaderScreen> {
       await prefs.setString('lastOpenedPath', widget.filePath);
       await prefs.setInt('lastChapterIndex_${widget.filePath}', _currentChapterIndex);
       
+      final tts = Provider.of<TtsService>(context, listen: false);
+      final wasTts = tts.state == TtsState.playing || tts.state == TtsState.paused || _lastChunkIndex > 0;
+      await prefs.setBool('lastWasTts_${widget.filePath}', wasTts);
+      if (wasTts) {
+        await prefs.setInt('tts_chunk_${widget.filePath}', _lastChunkIndex);
+      }
+      
       // Update the library entry as well
       final data = prefs.getString('library');
       if (data != null) {
@@ -123,6 +134,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
         if (index != -1) {
           books[index]['lastChapter'] = _currentChapterIndex;
           books[index]['totalChapters'] = _chapters.length;
+          books[index]['lastWasTts'] = wasTts;
+          if (wasTts) {
+            books[index]['ttsLastChunk'] = _lastChunkIndex;
+            books[index]['ttsTotalChunks'] = tts.totalChunks;
+          }
           await prefs.setString('library', jsonEncode(books));
         }
       }
@@ -769,7 +785,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
       final plainText = _stripHtml(content);
       if (plainText.isNotEmpty) {
         final prefs = await SharedPreferences.getInstance();
-        final startChunk = prefs.getInt('tts_chunk_${widget.filePath}') ?? 0;
+        final startChunk = widget.startChunk > 0 
+            ? widget.startChunk 
+            : prefs.getInt('tts_chunk_${widget.filePath}') ?? 0;
         
         // If we were already speaking this chapter but stopped, we continue.
         // If we just loaded the chapter, startChunk will be 0 or last saved.
