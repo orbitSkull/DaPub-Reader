@@ -105,11 +105,17 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
     });
 
     if (_projectFolderPath != null) {
-      final folder = Directory(_projectFolderPath!);
-      if (!await folder.exists()) {
-        await folder.create(recursive: true);
-      }
-      
+      await _loadFromFolder(_projectFolderPath!);
+    }
+
+    setState(() {
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _loadFromFolder(String folderPath) async {
+    try {
+      final folder = Directory(folderPath);
       if (await folder.exists()) {
         final files = folder.listSync();
         for (final entity in files) {
@@ -126,21 +132,15 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
         }
         _projects.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
       }
+    } catch (e) {
+      debugPrint('Error loading projects: $e');
     }
-
-    setState(() {
-      _isLoading = false;
-    });
   }
 
   Future<void> _selectProjectFolder() async {
     try {
       final result = await FilePicker.platform.getDirectoryPath();
       if (result != null) {
-        final folder = Directory(result);
-        if (!await folder.exists()) {
-          await folder.create(recursive: true);
-        }
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('writerProjectFolder', result);
         setState(() {
