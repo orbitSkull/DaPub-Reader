@@ -9,11 +9,13 @@ import 'writer_projects_screen.dart';
 
 class WriterScreen extends StatefulWidget {
   final WriterProject project;
+  final Function(WriterProject)? onSave;
   final int startChapter;
 
   const WriterScreen({
     super.key,
     required this.project,
+    this.onSave,
     this.startChapter = 0,
   });
 
@@ -28,6 +30,7 @@ class _WriterScreenState extends State<WriterScreen> {
   final ScrollController _scrollController = ScrollController();
   bool _showUI = true;
   bool _hasUnsavedChanges = false;
+  bool _isEditMode = false;
 
   @override
   void initState() {
@@ -37,11 +40,14 @@ class _WriterScreenState extends State<WriterScreen> {
     if (_chapters.isNotEmpty && _currentChapterIndex < _chapters.length) {
       _contentController.text = _chapters[_currentChapterIndex].content;
     }
+    _isEditMode = _chapters.isNotEmpty;
   }
 
   @override
   void dispose() {
-    _saveCurrentChapter();
+    if (_hasUnsavedChanges) {
+      _saveCurrentChapter();
+    }
     _contentController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -54,7 +60,6 @@ class _WriterScreenState extends State<WriterScreen> {
         id: _chapters[_currentChapterIndex].id,
         title: _chapters[_currentChapterIndex].title,
         content: content,
-        wordCount: _countWords(content),
         order: _chapters[_currentChapterIndex].order,
       );
     }
@@ -66,44 +71,35 @@ class _WriterScreenState extends State<WriterScreen> {
 
   Future<void> _saveProject() async {
     _saveCurrentChapter();
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final projectsData = prefs.getString('writerProjects');
-      List<Map<String, dynamic>> projects = [];
-      
-      if (projectsData != null) {
-        projects = List<Map<String, dynamic>>.from(
-          (jsonDecode(projectsData) as List).map((e) => Map<String, dynamic>.from(e))
-        );
-      }
-
-      final index = projects.indexWhere((p) => p['id'] == widget.project.id);
-      if (index != -1) {
-        projects[index]['chapters'] = _chapters.map((c) => c.toJson()).toList();
-        projects[index]['totalWords'] = _chapters.fold(0, (sum, c) => sum + c.wordCount);
-        projects[index]['updatedAt'] = DateTime.now().toIso8601String();
-      }
-      
-      await prefs.setString('writerProjects', jsonEncode(projects));
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Project saved'), duration: Duration(seconds: 1)),
-        );
-        setState(() => _hasUnsavedChanges = false);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error saving: $e')),
-        );
-      }
+    final updatedProject = WriterProject(
+      id: widget.project.id,
+      title: widget.project.title,
+      epubPath: widget.project.epubPath,
+      chapters: _chapters,
+      createdAt: widget.project.createdAt,
+      updatedAt: DateTime.now(),
+    );
+    
+    if (widget.onSave != null) {
+      await widget.onSave!(updatedProject);
+    }
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Project saved'), duration: Duration(seconds: 1)),
+      );
+      setState(() {
+        _hasUnsavedChanges = false;
+        _isEditMode = false;
+      });
     }
   }
 
   void _goToChapter(int index) {
     if (index >= 0 && index < _chapters.length) {
-      _saveCurrentChapter();
+      if (_hasUnsavedChanges) {
+        _saveCurrentChapter();
+      }
       setState(() {
         _currentChapterIndex = index;
         _contentController.text = _chapters[index].content;
@@ -134,7 +130,7 @@ class _WriterScreenState extends State<WriterScreen> {
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
         if (_hasUnsavedChanges) {
-          _saveProject();
+          await _saveProject();
         }
         if (context.mounted) {
           Navigator.pop(context, result);
@@ -168,11 +164,17 @@ class _WriterScreenState extends State<WriterScreen> {
               actions: [
                 IconButton(
                   icon: Icon(
-                    _hasUnsavedChanges ? Icons.save : Icons.save_outlined,
-                    color: _hasUnsavedChanges ? Colors.orange : null,
+                    _isEditMode ? Icons.check : Icons.edit,
+                    color: _isEditMode ? Colors.green : (_hasUnsavedChanges ? Colors.orange : null),
                   ),
-                  onPressed: _saveProject,
-                  tooltip: 'Save',
+                  onPressed: () {
+                    if (_isEditMode) {
+                      _saveProject();
+                    } else {
+                      setState(() => _isEditMode = true);
+                    }
+                  },
+                  tooltip: _isEditMode ? 'Save' : 'Edit',
                 ),
                 IconButton(
                   icon: const Icon(Icons.text_fields_rounded),
@@ -189,7 +191,7 @@ class _WriterScreenState extends State<WriterScreen> {
             )
           : null,
         body: _buildBody(settings, isDark),
-        bottomNavigationBar: _showUI ? _buildNavigationBar() : null,
+        bottomNavigationBar: _showUI && _chapters.isNotEmpty ? _buildNavigationBar() : null,
       ),
     );
   }
@@ -217,7 +219,45 @@ class _WriterScreenState extends State<WriterScreen> {
 
     final backgroundColor = isDark ? Colors.grey[900] : Colors.white;
     final textColor = isDark ? Colors.white : Colors.black87;
-    final cursorColor = isDark ? Colors.teal : Colors.teal;
+    final cursorColor = Colors.teal;
+
+    if (!_isEditMode) {
+      return GestureDetector(
+        onTap: () {
+          setState(() {
+            _showUI = !_showUI;
+          });
+        },
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          color: backgroundColor,
+          height: double.infinity,
+          width: double.infinity,
+          padding: EdgeInsets.fromLTRB(
+            16,
+            _showUI ? kToolbarHeight + 40 : 40,
+            16,
+            _showUI ? 100 : 40,
+          ),
+          child: SingleChildScrollView(
+            controller: _scrollController,
+            child: Text(
+              _contentController.text,
+              style: TextStyle(
+                fontSize: settings.fontSize,
+                height: settings.lineHeight,
+                color: textColor,
+                fontFamily: settings.fontFamily == 'Serif'
+                    ? 'serif'
+                    : settings.fontFamily == 'Mono'
+                        ? 'monospace'
+                        : null,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
 
     return GestureDetector(
       onTap: () {
@@ -269,8 +309,6 @@ class _WriterScreenState extends State<WriterScreen> {
   }
 
   Widget? _buildNavigationBar() {
-    if (_chapters.isEmpty) return null;
-
     final canGoBack = _currentChapterIndex > 0;
     final canGoForward = _currentChapterIndex < _chapters.length - 1;
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -306,7 +344,7 @@ class _WriterScreenState extends State<WriterScreen> {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      _buildTtsButton(),
+                      if (_isEditMode) _buildTtsButton(),
                       TextButton.icon(
                         onPressed: canGoForward ? _nextChapter : null,
                         icon: Text('Next', style: TextStyle(color: canGoForward ? (isDark ? Colors.white : Colors.black87) : Colors.grey)),
@@ -610,7 +648,6 @@ class _WriterScreenState extends State<WriterScreen> {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    subtitle: Text('${chapter.wordCount} words'),
                     selected: isSelected,
                     onTap: () {
                       _goToChapter(index);
@@ -645,13 +682,14 @@ class _WriterScreenState extends State<WriterScreen> {
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       title: 'Chapter $chapterNumber',
       content: '',
-      wordCount: 0,
       order: chapterNumber,
     );
     setState(() {
       _chapters.add(newChapter);
       _currentChapterIndex = _chapters.length - 1;
       _contentController.text = '';
+      _isEditMode = true;
+      _hasUnsavedChanges = true;
     });
   }
 
