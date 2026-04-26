@@ -328,22 +328,28 @@ class _WriterScreenState extends State<WriterScreen> {
                     icon: Icon(Icons.chevron_left, color: canGoBack ? (isDark ? Colors.white : Colors.black87) : Colors.grey),
                     label: Text('Previous', style: TextStyle(color: canGoBack ? (isDark ? Colors.white : Colors.black87) : Colors.grey)),
                   ),
-                  Text(
-                    '${_currentChapterIndex + 1} / ${_chapters.length}',
-                    style: TextStyle(fontWeight: FontWeight.w600, color: isDark ? Colors.white70 : Colors.black87),
+                  Flexible(
+                    child: Text(
+                      '${_currentChapterIndex + 1} / ${_chapters.length}',
+                      style: TextStyle(fontWeight: FontWeight.w600, color: isDark ? Colors.white70 : Colors.black87),
+                      textAlign: TextAlign.center,
+                    ),
                   ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (!_isEditMode) _buildTtsButton(),
-                      if (_isEditMode)
-                        TextButton.icon(
-                          onPressed: canGoForward ? () => _goToChapter(_currentChapterIndex + 1) : null,
-                          icon: Text('Next', style: TextStyle(color: canGoForward ? (isDark ? Colors.white : Colors.black87) : Colors.grey)),
-                          label: Icon(Icons.chevron_right, color: canGoForward ? (isDark ? Colors.white : Colors.black87) : Colors.grey),
-                        ),
-                    ],
-                  ),
+                  if (!_isEditMode)
+                    Consumer<TtsService>(
+                      builder: (context, ttsButton, _) {
+                        return IconButton(
+                          icon: const Icon(Icons.volume_up),
+                          onPressed: () => _speakCurrentChapter(ttsButton),
+                        );
+                      },
+                    )
+                  else
+                    TextButton.icon(
+                      onPressed: canGoForward ? () => _goToChapter(_currentChapterIndex + 1) : null,
+                      icon: Icon(Icons.chevron_right, color: canGoForward ? (isDark ? Colors.white : Colors.black87) : Colors.grey),
+                      label: Text('Next', style: TextStyle(color: canGoForward ? (isDark ? Colors.white : Colors.black87) : Colors.grey)),
+                    ),
                 ],
               ),
             ),
