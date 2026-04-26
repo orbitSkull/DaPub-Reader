@@ -7,12 +7,14 @@ LUMING is a modern, high-performance Flutter application designed for an immersi
 ## ✅ Task List
 
 - [x] **LUMING Pub Reader**: High-fidelity EPUB parsing and immersive reading.
+- [x] **Interactive Library**: Bookmarking options, Cover Images for Epubs, Progress Tracking.
+- [x] **Stats For Readers**: Reading vs Listening stats, summary of activities and time.
 - [x] **Advanced Piper TTS**: Neural offline text-to-speech with support for **120+ high-quality models**.
 - [x] **Background Playback**: Full notification and lock-screen controls for hands-free reading.
 - [x] **Custom Bookmarks**: Create unlimited custom labels for organizing books.
 - [ ] **LUMING Translation**: Real-time sentence and chapter translation (Coming Soon).
 - [ ] **LUMING Writer**: Distraction-free EPUB creation and publishing tools (Coming Soon).
-- [ ] **Official Release**: Stable v1.0.0 builds for Android.
+- [x] **Official Release**: Stable v1.0.0 builds for Android.
 
 ## 🚀 Key Features
 
