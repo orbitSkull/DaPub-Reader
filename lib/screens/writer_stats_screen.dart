@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../services/epub_project_service.dart';
+import '../models/bookmark_type.dart';
 import 'writer_epub_stats_screen.dart';
 
 class WriterStatsScreen extends StatefulWidget {
@@ -18,7 +19,7 @@ class _WriterStatsScreenState extends State<WriterStatsScreen> {
   bool _isLoading = true;
   bool _hasPermission = false;
   String? _projectFolderPath;
-  ProjectBookmark _selectedFilter = ProjectBookmark.all;
+  BookmarkType _selectedFilter = BookmarkType.all;
   bool _isGridView = false;
   final EpubProjectService _service = EpubProjectService();
 
@@ -40,7 +41,7 @@ class _WriterStatsScreenState extends State<WriterStatsScreen> {
   }
 
   List<EpisodeProject> get _filteredProjects {
-    if (_selectedFilter == ProjectBookmark.all) {
+    if (_selectedFilter == BookmarkType.all) {
       return _projects;
     }
     return _projects.where((p) => p.bookmarks.contains(_selectedFilter)).toList();
@@ -92,37 +93,64 @@ class _WriterStatsScreenState extends State<WriterStatsScreen> {
         padding: const EdgeInsets.all(16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Filter Projects', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text('Filter Projects', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 16),
-            ListTile(
-              leading: Icon(_selectedFilter == ProjectBookmark.all ? Icons.check : null, color: Colors.teal),
-              title: const Text('All Projects'),
-              onTap: () {
-                Navigator.pop(ctx);
-                setState(() => _selectedFilter = ProjectBookmark.all);
-              },
-            ),
-            ListTile(
-              leading: Icon(_selectedFilter == ProjectBookmark.recent ? Icons.check : null, color: Colors.teal),
-              title: const Text('Recent'),
-              onTap: () {
-                Navigator.pop(ctx);
-                setState(() => _selectedFilter = ProjectBookmark.recent);
-              },
-            ),
-            ListTile(
-              leading: Icon(_selectedFilter == ProjectBookmark.favourite ? Icons.check : null, color: Colors.teal),
-              title: const Text('Favourites'),
-              onTap: () {
-                Navigator.pop(ctx);
-                setState(() => _selectedFilter = ProjectBookmark.favourite);
-              },
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: BookmarkType.values.map((type) {
+                final isSelected = _selectedFilter == type;
+                return FilterChip(
+                  label: Text(_getBookmarkLabel(type)),
+                  selected: isSelected,
+                  onSelected: (_) {
+                    Navigator.pop(ctx);
+                    setState(() => _selectedFilter = type);
+                  },
+                  avatar: isSelected ? const Icon(Icons.check, size: 18) : null,
+                );
+              }).toList(),
             ),
           ],
         ),
       ),
     );
+  }
+
+  String _getBookmarkLabel(BookmarkType type) {
+    switch (type) {
+      case BookmarkType.all:
+        return 'All';
+      case BookmarkType.completed:
+        return 'Completed';
+      case BookmarkType.inProgress:
+        return 'Reading';
+      case BookmarkType.dropped:
+        return 'Dropped';
+      case BookmarkType.favourite:
+        return 'Favourite';
+      case BookmarkType.yourCreation:
+        return 'Own';
+    }
+  }
+
+  Color _getBookmarkColor(BookmarkType type) {
+    switch (type) {
+      case BookmarkType.all:
+        return Colors.teal;
+      case BookmarkType.completed:
+        return Colors.green;
+      case BookmarkType.inProgress:
+        return Colors.blue;
+      case BookmarkType.dropped:
+        return Colors.red;
+      case BookmarkType.favourite:
+        return Colors.amber;
+      case BookmarkType.yourCreation:
+        return Colors.purple;
+    }
   }
 
   void _openProject(EpisodeProject project) {

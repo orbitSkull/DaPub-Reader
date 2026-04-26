@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
+import '../models/bookmark_type.dart';
 
 class EpisodeProject {
   final String id;
@@ -12,7 +13,7 @@ class EpisodeProject {
   final String? coverPath;
   final DateTime createdAt;
   final DateTime updatedAt;
-  final List<ProjectBookmark> bookmarks;
+  final List<BookmarkType> bookmarks;
 
   EpisodeProject({
     required this.id,
@@ -21,7 +22,7 @@ class EpisodeProject {
     this.coverPath,
     required this.createdAt,
     required this.updatedAt,
-    this.bookmarks = const [ProjectBookmark.all],
+    this.bookmarks = const [BookmarkType.all],
   });
 
   Map<String, dynamic> toJson() => {
@@ -41,17 +42,11 @@ class EpisodeProject {
     coverPath: json['coverPath'],
     createdAt: DateTime.parse(json['createdAt']),
     updatedAt: DateTime.parse(json['updatedAt']),
-    bookmarks: (json['bookmarks'] as List?)?.map((b) => ProjectBookmark.values.firstWhere(
+    bookmarks: (json['bookmarks'] as List?)?.map((b) => BookmarkType.values.firstWhere(
       (e) => e.name == b,
-      orElse: () => ProjectBookmark.all,
-    )).toList() ?? [ProjectBookmark.all],
+      orElse: () => BookmarkType.all,
+    )).toList() ?? [BookmarkType.all],
   );
-}
-
-enum ProjectBookmark {
-  all,
-  recent,
-  favourite,
 }
 
 class ChapterData {
@@ -217,7 +212,7 @@ class EpubProjectService {
         'coverPath': coverPath,
         'createdAt': DateTime.now().toIso8601String(),
         'updatedAt': DateTime.now().toIso8601String(),
-        'bookmarks': ['all'],
+        'bookmarks': [BookmarkType.all.name],
       };
       
       final jsonFileName = _getJsonName(newTitle, id);
@@ -245,7 +240,7 @@ class EpubProjectService {
       'coverPath': source.coverPath,
       'createdAt': DateTime.now().toIso8601String(),
       'updatedAt': DateTime.now().toIso8601String(),
-      'bookmarks': ['all'],
+      'bookmarks': [BookmarkType.all.name],
     };
     
     final jsonFileName = _getJsonName(newTitle, newId);

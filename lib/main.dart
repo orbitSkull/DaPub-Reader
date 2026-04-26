@@ -19,6 +19,8 @@ import 'providers/reader_settings.dart';
 import 'services/tts_service.dart';
 import 'services/writer_service.dart';
 
+export 'models/bookmark_type.dart';
+
 enum BookmarkType {
   all,
   completed,

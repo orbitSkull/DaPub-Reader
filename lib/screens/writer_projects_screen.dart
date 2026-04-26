@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:convert';
 import 'dart:io';
+import '../models/bookmark_type.dart';
 import 'writer_screen.dart';
 import '../services/epub_project_service.dart';
 
@@ -21,7 +22,7 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
   bool _isLoading = true;
   bool _hasPermission = false;
   bool _isGridView = false;
-  ProjectBookmark _selectedBookmark = ProjectBookmark.all;
+  BookmarkType _selectedBookmark = BookmarkType.all;
 
   @override
   void initState() {
@@ -83,7 +84,7 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
   }
 
   List<EpisodeProject> get _filteredProjects {
-    if (_selectedBookmark == ProjectBookmark.all) {
+    if (_selectedBookmark == BookmarkType.all) {
       return _projects;
     }
     return _projects.where((p) => p.bookmarks.contains(_selectedBookmark)).toList();
@@ -191,12 +192,27 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
     );
   }
 
-  Future<void> _toggleBookmark(EpisodeProject project, ProjectBookmark bookmark) async {
-    final updatedBookmarks = List<ProjectBookmark>.from(project.bookmarks);
-    if (updatedBookmarks.contains(bookmark)) {
-      updatedBookmarks.remove(bookmark);
+  Future<void> _toggleBookmark(EpisodeProject project, BookmarkType bookmark) async {
+    final updatedBookmarks = List<BookmarkType>.from(project.bookmarks);
+    if (bookmark == BookmarkType.all) {
+      if (updatedBookmarks.contains(BookmarkType.all)) {
+        updatedBookmarks.remove(BookmarkType.all);
+      } else {
+        updatedBookmarks.clear();
+        updatedBookmarks.add(BookmarkType.all);
+      }
     } else {
-      updatedBookmarks.add(bookmark);
+      if (updatedBookmarks.contains(BookmarkType.all)) {
+        updatedBookmarks.remove(BookmarkType.all);
+      }
+      if (updatedBookmarks.contains(bookmark)) {
+        updatedBookmarks.remove(bookmark);
+      } else {
+        updatedBookmarks.add(bookmark);
+      }
+      if (updatedBookmarks.isEmpty) {
+        updatedBookmarks.add(BookmarkType.all);
+      }
     }
     
     final updatedProject = EpisodeProject(
@@ -550,12 +566,13 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
             const SizedBox(height: 16),
             Wrap(
               spacing: 8,
-              children: ProjectBookmark.values.map((bookmark) {
+              children: BookmarkType.values.map((bookmark) {
                 final isSelected = project.bookmarks.contains(bookmark);
                 return FilterChip(
-                  label: Text(bookmark.name.toUpperCase()),
+                  label: Text(_getBookmarkLabel(bookmark)),
                   selected: isSelected,
-                  selectedColor: Colors.teal[200],
+                  selectedColor: _getBookmarkColor(bookmark).withOpacity(0.3),
+                  checkmarkColor: _getBookmarkColor(bookmark),
                   onSelected: (_) {
                     _toggleBookmark(project, bookmark);
                     Navigator.pop(ctx);
@@ -567,6 +584,40 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
         ),
       ),
     );
+  }
+
+  String _getBookmarkLabel(BookmarkType type) {
+    switch (type) {
+      case BookmarkType.all:
+        return 'ALL';
+      case BookmarkType.completed:
+        return 'COMPLETED';
+      case BookmarkType.inProgress:
+        return 'READING';
+      case BookmarkType.dropped:
+        return 'DROPPED';
+      case BookmarkType.favourite:
+        return 'FAVOURITE';
+      case BookmarkType.yourCreation:
+        return 'OWN';
+    }
+  }
+
+  Color _getBookmarkColor(BookmarkType type) {
+    switch (type) {
+      case BookmarkType.all:
+        return Colors.teal;
+      case BookmarkType.completed:
+        return Colors.green;
+      case BookmarkType.inProgress:
+        return Colors.blue;
+      case BookmarkType.dropped:
+        return Colors.red;
+      case BookmarkType.favourite:
+        return Colors.amber;
+      case BookmarkType.yourCreation:
+        return Colors.purple;
+    }
   }
 
   void _openProject(EpisodeProject project) {
@@ -593,13 +644,13 @@ class _WriterProjectsScreenState extends State<WriterProjectsScreen> {
             icon: Icon(_isGridView ? Icons.list : Icons.grid_view),
             onPressed: () => setState(() => _isGridView = !_isGridView),
           ),
-          PopupMenuButton<ProjectBookmark>(
+          PopupMenuButton<BookmarkType>(
             icon: const Icon(Icons.filter_list),
             onSelected: (bookmark) => setState(() => _selectedBookmark = bookmark),
-            itemBuilder: (ctx) => ProjectBookmark.values.map((bookmark) {
+            itemBuilder: (ctx) => BookmarkType.values.map((bookmark) {
               return PopupMenuItem(
                 value: bookmark,
-                child: Text(bookmark.name.toUpperCase()),
+                child: Text(_getBookmarkLabel(bookmark)),
               );
             }).toList(),
           ),

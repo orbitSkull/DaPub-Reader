@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:archive/archive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/epub_project_service.dart';
+import '../models/bookmark_type.dart';
 
 class WriterEpubStatsScreen extends StatefulWidget {
   final EpisodeProject project;
