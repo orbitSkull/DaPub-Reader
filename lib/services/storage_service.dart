@@ -60,6 +60,12 @@ class StorageService {
     return '$libraryPath/$sanitized.json';
   }
 
+  String getBookFilePath(String title, String originalPath) {
+    final ext = originalPath.split('.').last;
+    final sanitized = title.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
+    return '$libraryPath/$sanitized.$ext';
+  }
+
   String getProjectDir(String projectName) {
     final sanitized = projectName.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
     return '$projectsPath/$sanitized';

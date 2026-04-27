@@ -389,14 +389,24 @@ class _ReaderScreenState extends State<ReaderScreen> {
     }
   }
 
-  Future<bool> _addToLibrary(String filePath, String title, {String? coverPath, int totalChapters = 0}) async {
+  Future<bool> _addToLibrary(String originalPath, String title, {String? coverPath, int totalChapters = 0}) async {
     try {
       final storage = StorageService();
       final bookFile = File(storage.getBookEntryFile(title));
+      final targetPath = storage.getBookFilePath(title, originalPath);
       
+      // Copy the EPUB to our centralized storage if it's not already there
+      if (originalPath != targetPath) {
+        final originalFile = File(originalPath);
+        final targetFile = File(targetPath);
+        if (!targetFile.existsSync() && originalFile.existsSync()) {
+          await originalFile.copy(targetPath);
+        }
+      }
+
       if (!bookFile.existsSync()) {
         final entry = BookEntry(
-          filePath: filePath,
+          filePath: targetPath,
           title: title,
           coverPath: coverPath,
           bookmarks: [BookmarkType.all],
