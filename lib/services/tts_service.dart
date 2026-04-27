@@ -676,7 +676,7 @@ class TtsService extends ChangeNotifier {
         final now = DateTime.now();
         
         // Update Overall Stats
-        final statsFile = File(storage.overallStatsFile);
+        final statsFile = File(storage.readerStatsFile);
         Map<String, dynamic> stats = {};
         if (statsFile.existsSync()) {
           stats = jsonDecode(statsFile.readAsStringSync());
@@ -835,7 +835,7 @@ class TtsService extends ChangeNotifier {
       // Log a listening session
       try {
         final storage = StorageService();
-        final statsFile = File(storage.overallStatsFile);
+        final statsFile = File(storage.readerStatsFile);
         Map<String, dynamic> stats = {};
         if (statsFile.existsSync()) {
           stats = jsonDecode(statsFile.readAsStringSync());

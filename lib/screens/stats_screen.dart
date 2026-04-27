@@ -45,7 +45,7 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
     final storage = StorageService();
     
     // Load Overall Stats
-    final statsFile = File(storage.overallStatsFile);
+    final statsFile = File(storage.readerStatsFile);
     Map<String, dynamic> stats = {};
     if (statsFile.existsSync()) {
       try {

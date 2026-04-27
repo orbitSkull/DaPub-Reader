@@ -334,7 +334,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
         final now = DateTime.now();
         
         // Update Overall Stats
-        final statsFile = File(storage.overallStatsFile);
+        final statsFile = File(storage.readerStatsFile);
         Map<String, dynamic> stats = {};
         if (statsFile.existsSync()) {
           stats = jsonDecode(statsFile.readAsStringSync());
@@ -359,7 +359,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     } else if (_currentChapterIndex == _chapters.length - 1) {
       try {
         final storage = StorageService();
-        final statsFile = File(storage.overallStatsFile);
+        final statsFile = File(storage.readerStatsFile);
         Map<String, dynamic> stats = {};
         if (statsFile.existsSync()) {
           stats = jsonDecode(statsFile.readAsStringSync());
@@ -407,7 +407,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
         await bookFile.writeAsString(jsonEncode(entry.toJson()));
         
         // Update stats
-        final statsFile = File(storage.overallStatsFile);
+        final statsFile = File(storage.readerStatsFile);
         Map<String, dynamic> stats = {};
         if (statsFile.existsSync()) {
           stats = jsonDecode(await statsFile.readAsString());
