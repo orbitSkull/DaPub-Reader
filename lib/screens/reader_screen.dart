@@ -11,6 +11,7 @@ import 'dart:convert';
 import 'package:path_provider/path_provider.dart';
 import '../services/storage_service.dart';
 import '../services/writer_service.dart';
+import '../services/tts_service.dart';
 import '../models/book_entry.dart';
 import '../models/bookmark_type.dart';
 import '../models/piper_voice.dart';

@@ -298,10 +298,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _showBookOptions(BookEntry book) {
+    final settings = Provider.of<ReaderSettings>(context, listen: false);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (context, settings, child) => _BookOptionsSheet(
+      builder: (context) => _BookOptionsSheet(
         book: book,
         globalCustomLabels: settings.globalCustomLabels,
         onBookmarkToggle: (type) => _toggleBookmark(book, type),

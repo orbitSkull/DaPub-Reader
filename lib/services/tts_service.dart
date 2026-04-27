@@ -12,6 +12,7 @@ import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'package:just_audio_background/just_audio_background.dart';
 import '../models/piper_voice.dart';
+import 'storage_service.dart';
 
 enum TtsState { idle, loading, ready, playing, paused, error }
 
@@ -688,7 +689,7 @@ class TtsService extends ChangeNotifier {
         
         int totalWords = wr + wordsCount;
         int newListeningMinutes = totalWords ~/ 130;
-        int minutesGained = newListeningMinutes - (stats['totalListeningMinutes'] ?? 0);
+        int minutesGained = newListeningMinutes - ((stats['totalListeningMinutes'] ?? 0) as num).toInt();
         stats['totalListeningMinutes'] = newListeningMinutes;
         
         double currentAvg = stats['avgTtsSpeed']?.toDouble() ?? 1.0;
